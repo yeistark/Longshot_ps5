@@ -2983,7 +2983,15 @@ Texture* texture_touch(Texture* tex, bool for_sampling) {
             if (logged++ < 20 || (tex->guest_size > (4u << 20) && big[tex->gpu]++ < 3)) {
                 uint64_t part = 0, nz = 0, readable = 0;
                 for (const auto& r : dirty) part += r.second - r.first;
-                if (partial) {   // (what the CPU wrote: how much of it is not zero, and in which levels)
+#ifdef __PROSPERO__
+                // (PS5: not counted. The count reads the written part into a buffer of its size, for this log line alone: 31 MB
+                // for a 1520 x 1280 x 8 texture, which the console's memory, free but in pieces of 5 MiB, did not have, and the
+                // title ended on an uncaught std::bad_alloc, 2026-11-15)
+                const bool count_written = false;
+#else
+                const bool count_written = partial;
+#endif
+                if (count_written) {   // (what the CPU wrote: how much of it is not zero, and in which levels)
                     std::vector<uint8_t> b;
                     char lv[96] = "";
                     int lvn = 0;
