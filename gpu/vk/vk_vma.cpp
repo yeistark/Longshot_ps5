@@ -222,7 +222,22 @@ bool image_compact_pass_end(uint64_t* freed_bytes, uint32_t* freed_blocks) {
     return compact_over(freed_bytes, freed_blocks);
 }
 
+#ifdef __PROSPERO__
+extern "C" uint64_t hos_ps5_direct_room(void);   // (host/ps5/win32_ps5.c: the title's free direct memory in all)
+#endif
 bool create_image(const VkImageCreateInfo& ci, VkImage& image, VmaAllocation& allocation, bool dedicated, bool target, bool textures) {
+#ifdef __PROSPERO__
+    // (PS5, memory short: an image of about 1 MB and up gets memory of its own, which goes back to the console's pool the
+    // moment the image does; a pool's block goes back only once empty. In Kakariko the blocks held 2857 MB for 2098 MB of
+    // images while a 5 MB request found no piece over 4 MiB (2026-11-15). Smaller images stay in the blocks: a memory
+    // object each would be thousands. Short: less free than HOS_PS5_TEX_RESERVE_MB (800))
+    {
+        static const uint64_t reserve = (uint64_t)(getenv("HOS_PS5_TEX_RESERVE_MB") ? atoi(getenv("HOS_PS5_TEX_RESERVE_MB")) : 800) << 20;
+        if (!dedicated && (uint64_t)ci.extent.width * ci.extent.height * ci.extent.depth * ci.arrayLayers >= (256u << 10) &&
+            hos_ps5_direct_room() < reserve)
+            dedicated = true;
+    }
+#endif
     VmaAllocationCreateInfo ai{};
     ai.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
     // (in VRAM or not at all: an image VMA puts in system memory when VRAM is full is read over PCIe every frame,

@@ -36,6 +36,10 @@ void hos_ps5_defaults(void) {
         {"HOS_PS5_RESERVE_MB", "3072"}, {"RX_VK_PRECOMPILE", "0"}, {"RX_VK_WB_DIFF", "0"},
         {"RX_VK_IMPORT_CHUNK_MB", "1"}, {"RX_VK_IMPORT_SPAN_MB", "4"}, {"RX_VK_COMPACT", "0"},
         {"RX_VK_WORKERS", "1"}, {"RX_VK_FORCE_MESH_FALLBACK", "1"},
+        /* (the renderer's image blocks at 16 MB, not 128: a block goes back to the console's pool only once empty, and the
+           pool is shared with the game's pages and the heap. Below HOS_PS5_TEX_RESERVE_MB free, an image of 1 MB and up
+           gets memory of its own: gpu/vk/vk_vma.cpp) */
+        {"RX_VK_IMAGE_BLOCK_MB", "16"}, {"HOS_PS5_TEX_RESERVE_MB", "800"},
     };
     for (size_t i = 0; i < sizeof defaults / sizeof *defaults; i++) setenv(defaults[i][0], defaults[i][1], 0);
     hos_ps5_cpu_topology();
