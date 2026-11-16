@@ -290,9 +290,12 @@ static int commit_units_wait(uintptr_t lo, uintptr_t hi) {
    long session's heap comes to (1107 MiB at its most in eleven minutes at "Balanced"). The console's pool ends in thousands of
    free pieces, and a request the heap had to ask the pool for found none of its size: 9 MiB for a 2048 x 1152 texture's bytes
    with 777 MiB free, the largest piece 3 MiB, an uncaught std::bad_alloc, the title closed. From its own segment the heap needs
-   room in itself. What it costs: early in a session the heap holds some 500 MiB it does not use yet. */
+   room in itself. What it costs: early in a session the heap holds some 500 MiB it does not use yet.
+   (Longshot) 1792 MiB: on this base the heap comes to 1400-1600 MiB within minutes (2026-11-15: 1407 MiB in use of 1452 mapped
+   in 1273 segments, the 1280 full, and then 31 MB for a texture's bytes found no piece over 1 MiB). What holds it is not
+   established yet (HOS_PS5_HEAP_PROFILE=1 says); until it is brought down, the segment holds all of it. */
 #ifdef PS5_HEAP_FIRST_ARENA
-const size_t ps5_heap_first_arena_bytes = (size_t)1280 << 20;
+const size_t ps5_heap_first_arena_bytes = (size_t)1792 << 20;
 #endif
 
 int hos_ps5_unit_backed(uintptr_t addr);
