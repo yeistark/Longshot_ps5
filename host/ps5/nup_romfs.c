@@ -145,10 +145,18 @@ int nup_romfs_path(const char *path) {
 
 int64_t nup_romfs_find(const char *path, int *is_dir, uint64_t *size) {
     if (!nup_romfs_path(path)) return -1;
-    const char *rel = path + ROOT_LEN;
-    while (*rel == '/') rel++;
-    size_t n = strlen(rel);
-    while (n && rel[n - 1] == '/') n--;
+    /* repeated slashes count as one, as a file system takes them: OoT's dialogue streams are asked for as
+       content://Voice/Resource//Stream/<lang>_EventFlowMsg-....bwav (klog_longshot_24), and with the "//" kept the
+       hash missed them, so every line Navi speaks was silent */
+    char clean[sizeof path_buf];
+    size_t n = 0;
+    for (const char *p = path + ROOT_LEN; *p; p++) {
+        if (*p == '/' && (!n || clean[n - 1] == '/')) continue;
+        if (n + 1 >= sizeof clean) return -1;
+        clean[n++] = *p;
+    }
+    while (n && clean[n - 1] == '/') n--;
+    const char *rel = clean;
     uint32_t node;
     if (!n) {
         node = romfs_dir;
