@@ -37,8 +37,9 @@ stub libSceAgcDriver vendor/ps5/sdk/stubs/agc_driver_canary_link_stub.c
 source "$vulkan/tools/radv-link.sh"
 radv_link_recipe "$vulkan" "$sdk" "$archive" || exit 2
 # The libc calls host/ps5/win32_ps5.c defines because no module a title loads exports them (fnmatch, isatty,
-# pthread_setname_np, timegm): kept inside the executable, which may export nothing
-printf '{\n    local:\n        fnmatch;\n        isatty;\n        pthread_setname_np;\n        timegm;\n};\n' > "$work/link/local.map"
+# pthread_setname_np, timegm) or defines over the library's (_Exit, _exit: host/ps5/ps5_stubs.c): kept inside the
+# executable, which may export nothing
+printf '{\n    local:\n        fnmatch;\n        isatty;\n        pthread_setname_np;\n        timegm;\n        _Exit;\n        _exit;\n};\n' > "$work/link/local.map"
 start=$SECONDS
 link() {
 "$sdk/bin/prospero-lld" "${radv_linker_script[@]}" --eh-frame-hdr "${radv_link_flags[@]}" "$@" \

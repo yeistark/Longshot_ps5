@@ -50,3 +50,15 @@ ssize_t getrandom(void *buf, size_t n, unsigned flags) {
     fclose(f);
     return (ssize_t)got;
 }
+
+/* ---- the end ---- */
+/* _Exit and _exit are a crash report on the console, and what the title logged last is still in the platform layer's pipe
+   to klog when they run: a GPU stall's report (gpu/vk/vk_replay.cpp replay_fatal, which ends with _Exit) lost all but its
+   first lines (2026-11-15). The pipe is given half a second, then the shell closes the title (host/ps5/win32_ps5.c). */
+__attribute__((noreturn)) void hos_ps5_exit(int code);
+__attribute__((noreturn)) void _Exit(int code) {
+    fflush(NULL);
+    usleep(500000);
+    hos_ps5_exit(code);
+}
+__attribute__((noreturn)) void _exit(int code) { _Exit(code); }
