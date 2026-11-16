@@ -726,7 +726,8 @@ pid_t hos_ps5_tid(void) { return (pid_t)pthread_getthreadid_np(); }
 
 void *mkwvk_init(const void *host);                                      /* (gpu/vk/vk_main.cpp) */
 void mkwvk_close_asked(void);
-void *vk_icdGetInstanceProcAddr(void *instance, const char *name);      /* (RADV, linked in) */
+/* (RADV, linked in, behind the console's own answers for shader modules: host/ps5/ps5_vk_modules.cpp) */
+void *hos_ps5_vkGetInstanceProcAddr(void *instance, const char *name);
 extern volatile uint8_t hos_posix_keys[256] __attribute__((weak));       /* (host/posix/display_sdl.c) */
 extern volatile int hos_posix_window[4] __attribute__((weak));
 int hos_posix_post_message(unsigned msg, uintptr_t wp, intptr_t lp) __attribute__((weak));
@@ -750,7 +751,7 @@ void *hos_ps5_dlsym(void *module, const char *name) {
         if (!strcmp(name, "mkwvk_close_asked")) return (void *)mkwvk_close_asked;
         return NULL;
     }
-    if (module == MOD_VULKAN) return !strcmp(name, "vkGetInstanceProcAddr") ? (void *)vk_icdGetInstanceProcAddr : NULL;
+    if (module == MOD_VULKAN) return !strcmp(name, "vkGetInstanceProcAddr") ? (void *)hos_ps5_vkGetInstanceProcAddr : NULL;
     /* (RTLD_DEFAULT, or the executable: what the Linux build finds across its .so boundary) */
     if (!strcmp(name, "hos_posix_keys")) return (void *)hos_posix_keys;
     if (!strcmp(name, "hos_posix_window")) return (void *)hos_posix_window;
