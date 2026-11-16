@@ -297,7 +297,9 @@ static int commit_units_wait(uintptr_t lo, uintptr_t hi) {
    (4 MiB free) and the title stood still. The answer is to hold less, as PS5_Hookshot came to (modules made for a pipeline's
    creation and let go, the lowered code let go once picked), not a larger segment. */
 #ifdef PS5_HEAP_FIRST_ARENA
-const size_t ps5_heap_first_arena_bytes = (size_t)1280 << 20;
+/* (1024 MiB with the shader modules kept compressed, host/ps5/ps5_vk_modules.cpp: what the segment holds and the heap does
+   not use is taken from the game's pages, and the console ran out whole with 650 MiB of it unused) */
+const size_t ps5_heap_first_arena_bytes = (size_t)1024 << 20;
 #endif
 
 int hos_ps5_unit_backed(uintptr_t addr);

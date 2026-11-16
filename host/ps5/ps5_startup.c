@@ -27,7 +27,7 @@ void hos_ps5_startup(const char *title_name) {
      - RX_VK_PRECOMPILE=0: programs are read when drawn, not held from the start.
      - RX_VK_COMPACT=0: the VRAM compaction off; GPU faults followed it on the console.
      - RX_VK_FORCE_MESH_FALLBACK=1: the task and mesh stages as compute; the console's RADV hangs on the native ones. */
-void hos_ps5_defaults(void) {
+static void set_defaults(void) {
     static const char *const defaults[][2] = {
         {"HOS_HANDHELD", "1"}, {"RX_VK_TEX_MAX_DIM", "384"}, {"RX_VK_TEX_SKIP_MB", "16"}, {"RX_VK_ASTC_BC_ALL", "1"},
         {"RX_VK_ASTC_BC_MB", "0"}, {"RX_VK_FRAMEGEN_MULT", "2"}, {"RX_VK_PACE", "1"}, {"RX_VK_FSR_FG", "0"},
@@ -42,6 +42,16 @@ void hos_ps5_defaults(void) {
         {"RX_VK_IMAGE_BLOCK_MB", "16"}, {"HOS_PS5_TEX_RESERVE_MB", "800"},
     };
     for (size_t i = 0; i < sizeof defaults / sizeof *defaults; i++) setenv(defaults[i][0], defaults[i][1], 0);
+}
+
+/* Before any C++ object of the renderer is made: some of its switches are read into constants at that time
+   (RX_VK_IMAGE_BLOCK_MB: gpu/vk/vk_vma.cpp kImageBlock), long before main. Set from main, the 16 MB blocks were never
+   taken: 11 blocks of 128 MB held 645 MB of images (2026-11-15). A constructor with a priority runs ahead of the ones
+   without. Such a switch cannot be changed from longshot_env.txt, which is read in main. */
+__attribute__((constructor(101))) static void early_defaults(void) { set_defaults(); }
+
+void hos_ps5_defaults(void) {
+    set_defaults();   /* (again: harmless, and the one place to look) */
     hos_ps5_cpu_topology();
     hos_ps5_timing_probe();   /* (HOS_PS5_TIMING=1) */
     hos_ps5_sample_start();   /* (HOS_PS5_SAMPLE=<start>,<seconds>) */
