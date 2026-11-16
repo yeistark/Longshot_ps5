@@ -445,15 +445,50 @@ HLE(_ZN2nn2os15FreeMemoryPagesEmm) {
 
 /* nn::os::QueryMemoryInfo(nn::os::MemoryInfo*). TOTK reads +0 (total available) and +8 (total used):
    heap = align_down(total - used, 2 MB) - 0x43800000 (main+0x1131004). */
+#ifdef __PROSPERO__
+/* (PS5) The game's resource manager reads total - used after each page it takes or gives back, as the memory it can still ask for.
+   `used` was always the program and 16 MB: ~9.2 GB of "free" memory however full the console, so it took all it could and gave back
+   about a tenth (9645 MiB asked for, 912 given back in a session), ending the title at the console's real limit. HOS_PS5_MEMINFO_
+   RESERVE_MB=<n>: what it is told is free is the console's free direct memory less n MB, never more than before: it sees the
+   memory run out n MB before the console's does, as on a console whose OS counts what the title has mapped. Unset: as before. */
+extern uint64_t hos_ps5_direct_room(void);
+extern uint64_t hos_ps5_kept_bytes(void);   /* (host/ps5/win32_ps5.c: pages the game gave back, held for its next ones) */
+static uint64_t reported_used(void) {
+    static int64_t reserve = -2;
+    const uint64_t base = hos_program_size + (16ULL << 20);
+    if (reserve == -2) {
+        const char *e = getenv("HOS_PS5_MEMINFO_RESERVE_MB");
+        reserve = e ? (int64_t)atoll(e) : -1;
+    }
+    if (reserve < 0) return base;
+    const uint64_t room = hos_ps5_direct_room() + hos_ps5_kept_bytes(), keep = (uint64_t)reserve << 20;   // (what it can take: the console's free memory and what it gave back and is held for it)
+    uint64_t free_now = room > keep ? room - keep : 0;
+    const uint64_t most = hos_total_memory > base ? hos_total_memory - base : 0;
+    if (free_now > most) free_now = most;
+    static int64_t told_at;
+    const int64_t now = hos_now_ns();
+    if (now - told_at > 2000000000ll) {
+        told_at = now;
+        hos_log("meminfo: the game is told %llu MB free (the console has %llu MB, reserve %lld MB)", (unsigned long long)(free_now >> 20),
+                (unsigned long long)(room >> 20), (long long)reserve);
+    }
+    return hos_total_memory - free_now;
+}
+#endif
+
 HLE(_ZN2nn2os15QueryMemoryInfoEPNS0_10MemoryInfoE) {
     uint64_t info = ARG(0);
     HOS_TRACE_CALL("QueryMemoryInfo");
     G64(info + 0x00) = hos_total_memory;                       /* total available */
+#ifdef __PROSPERO__
+    G64(info + 0x08) = reported_used();                        /* total used: what the console has not left free */
+#else
     /* total used: program + system, and (longshot, 11-13) the heap and the pages the game has mapped, as Horizon counts it.
        OoT's resource memory (0x8080f010) takes total - used as what it may still map, before each AllocateMemoryPages: with
        program + system alone it read ~9.6 GB free whatever it held, and mapped 7.9 GB of pages beside its 6.9 GB heap in 15
        minutes of play (2.9 GB is all the console leaves it), never giving any back. HOS_MEMINFO_OLD=1: program + system, as before */
     G64(info + 0x08) = hos_used_memory(hos_program_size + (16ULL << 20));
+#endif
     G64(info + 0x10) = hos_heap_size;                          /* total heap */
     G64(info + 0x18) = hos_heap_used;                          /* allocated heap */
     G64(info + 0x20) = hos_program_size;                       /* program */

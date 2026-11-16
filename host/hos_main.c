@@ -156,6 +156,13 @@ static int reserve_guest(void) {
     void hos_commit_init(void);
     hos_commit_init();
     return VirtualAlloc((void *)A64_HOST_BASE, GUEST_SPACE, MEM_RESERVE, PAGE_NOACCESS) == (void *)A64_HOST_BASE;
+#elif defined(__PROSPERO__)
+    /* (PS5) reserved as on Windows, committed as the runtime hands memory out (hos_commit) or on first touch (mkw_glue.c
+       commit_on_touch): the console backs committed pages with direct memory (host/ps5/win32_ps5.c), and has no
+       overcommit to make a whole readable window of */
+    void hos_commit_init(void);
+    hos_commit_init();
+    return VirtualAlloc((void *)A64_HOST_BASE, GUEST_SPACE, MEM_RESERVE, PAGE_NOACCESS) == (void *)A64_HOST_BASE;
 #else
     /* (linux) the whole window readable and writable at once, its pages made as they are first touched (no commit
        step: MAP_NORESERVE). Decommitting is madvise (host/posix/win32_posix.c VirtualFree): the pages read as zero. */
@@ -242,7 +249,15 @@ static int reserve_guest(void) {
 int hos_guest_memfd = -1;
 int hos_posix_guest_memfd(void) { return hos_guest_memfd; }
 int hos_posix_guest_discard(void *p, size_t n) {
+#ifdef __PROSPERO__
+    /* (PS5) given back: whole units unmapped, their memory kept for the next commits (host/ps5/win32_ps5.c). The callers
+       keep and zero what a GPU import holds (host/hos_mem.c) */
+    int hos_ps5_decommit(void *addr, size_t size);
+    hos_ps5_decommit(p, n);
+    return 0;
+#else
     return madvise(p, n, hos_guest_memfd >= 0 ? MADV_REMOVE : MADV_DONTNEED);
+#endif
 }
 #endif
 
@@ -508,6 +523,15 @@ static int env_line_allowed(const char *name, const char *value) {
 static void load_longshot_env(void) {
     char path[MAX_PATH + 32];
     const char *other = getenv("HOS_ENV_FILE");
+#ifdef __PROSPERO__
+    /* (PS5) a title is started with no environment to put HOS_ENV_FILE in: a test run's switches are in
+       longshot_test_env.txt in the title folder, which the run tool writes before the start and takes away after the
+       run (ps5/tools/run.py). It sets anything, as HOS_ENV_FILE's file does; a player's longshot_env.txt does not. */
+    if (!(other && *other)) {
+        FILE *test = fopen("/app0/longshot_test_env.txt", "r");
+        if (test) fclose(test), other = "/app0/longshot_test_env.txt";
+    }
+#endif
     if (other && *other) {
         snprintf(path, sizeof path, "%s", other);
     } else {
@@ -1908,7 +1932,14 @@ static int game_main(int argc, char **argv) {
         }
 #endif
         HANDLE err = GetStdHandle(STD_ERROR_HANDLE);
+#ifdef __PROSPERO__
+        /* (PS5) standard error is already the kernel log (host/ps5/platform.c), a pipe and a thread of the platform layer's.
+           A file in the title folder costs ~60 ms a write on the console (200 log lines took 12 s), and the log was
+           unbuffered: every thread that logged stalled there holding its virtual core, and the game sat idle waiting. */
+        if (0) {
+#else
         if (!err || err == INVALID_HANDLE_VALUE || GetFileType(err) == FILE_TYPE_UNKNOWN) {
+#endif
             char path[MAX_PATH + 32];
             DWORD n = hos_game_path_a(path, MAX_PATH);
             while (n && path[n - 1] != 92 && path[n - 1] != 47) n--;
@@ -2008,7 +2039,17 @@ static int game_main(int argc, char **argv) {
             if (GetFileAttributesA(beside_image) != INVALID_FILE_ATTRIBUTES) {
                 image = beside_image;
                 if (!hos_romfs_dir) hos_romfs_dir = beside_romfs;
-#ifndef _WIN32
+#ifdef __PROSPERO__
+                /* (PS5) the title folder (/app0) holds image.bin and the saves; the romfs is read in place from the game's
+                   .nup (hos_ps5_nup: HOS_PS5_NUP, else the package an emulator there reads), and from a romfs/ folder
+                   beside image.bin only when there is no package */
+                if (hos_romfs_dir == beside_romfs) {
+                    int nup_romfs_open(const char *package);
+                    const char *hos_ps5_nup(void);
+                    if (nup_romfs_open(hos_ps5_nup())) hos_romfs_dir = "/nup/romfs";
+                }
+                if (!hos_user_dir) hos_user_dir = beside_user;
+#elif !defined(_WIN32)
                 if (!hos_user_dir) hos_user_dir = saves_dir(beside_user);
 #else
                 if (!hos_user_dir) hos_user_dir = beside_user;
@@ -2266,6 +2307,10 @@ int main(int argc, char **argv) {
     }
     int hos_display_init(void);
     void hos_display_loop(void);
+#ifdef __PROSPERO__   /* (the console: standard error into klog, the shell's splash dismissed: host/ps5/ps5_startup.c) */
+    void hos_ps5_startup(const char *title_name);
+    hos_ps5_startup(HOS_GAME_TITLE);
+#endif
     hos_game_layout();   /* (the game folder's cache/ and logs/, before anything writes there, --prepare-shaders too: host/game_layout.c) */
     load_longshot_env();
     hos_profiling_env();   /* (HOS_PROFILE=1, host/profiling.c: after the file, which may set it) */
@@ -2273,6 +2318,10 @@ int main(int argc, char **argv) {
     driver_cache_room();
     driver_cache_folder();
     driver_env_choose();
+#ifdef __PROSPERO__   /* (what the console plays with unless longshot_env.txt says otherwise, and its probes: host/ps5/ps5_startup.c) */
+    void hos_ps5_defaults(void);
+    hos_ps5_defaults();
+#endif
     game_argc = argc, game_argv = argv;
     int prepare_shaders = 0;
     for (int i = 1; i < argc; i++) {

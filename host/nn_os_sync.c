@@ -91,6 +91,17 @@ static size_t grave_head, grave_count, grave_cap;
    are freed 30 s later, each its own invalidation.) */
 static Obj *spares;
 
+/* (hookshot) calloc's answer to a momentary "no memory": the shared pool can run dry for a moment (a burst of the
+   game's own pages, aaf80e3), and obj_lookup used to write through the null it got back (o->lk, BaseProcCreateAndDeleteThread,
+   right after one of those bursts). obj_lookup cannot wait for memory the way a game page's commit or operator new do:
+   WaitAny's scan reaches it (through obj_nockpt) while holding mw_lock, and a sleep there would stall every multi-wait
+   poke for as long as the wait ran (tests/test_multiwait_wake.py's locked-region check, which does not allow this file
+   to call anything that can block while mw_lock or table_lock is held). A handful of pre-zeroed, never-freed objects,
+   each handed out once, survives the moment instead; one more burst than this when the pool is already dry still
+   crashes, as it always did. */
+static Obj spare_emergency[8];
+static volatile LONG spare_emergency_next;
+
 static void bury_locked(Obj *o) {
     static int keep = -1;
     if (keep < 0) keep = env_on("HOS_KEEP_DEAD_OBJECTS");
@@ -251,6 +262,10 @@ static Obj *obj_lookup(uint64_t key, int kind) {
             __atomic_store_n(&o->kind, 0, __ATOMIC_RELAXED);
         } else {
             o = (Obj *)calloc(1, sizeof *o);
+            if (!o) {   /* (hookshot) see spare_emergency above */
+                const LONG i = InterlockedIncrement(&spare_emergency_next) - 1;
+                if (i >= 0 && i < (LONG)(sizeof spare_emergency / sizeof *spare_emergency)) o = &spare_emergency[i];
+            }
         }
         InitializeSRWLock(&o->lk);
         InitializeConditionVariable(&o->cv);

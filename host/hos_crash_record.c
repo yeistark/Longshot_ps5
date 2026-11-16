@@ -250,6 +250,9 @@ static int safe_read(uintptr_t address, void *out, size_t size) {
 #ifdef _WIN32
     SIZE_T n = 0;
     return ReadProcessMemory(self_process, (const void *)address, out, size, &n) && n == size;
+#elif defined(__PROSPERO__)   /* (the console has no call that reads memory without faulting: host/ps5/ps5_startup.c) */
+    int hos_ps5_safe_read(uintptr_t address, void *out, size_t size);
+    return hos_ps5_safe_read(address, out, size);
 #else
     struct iovec local = {out, size}, remote = {(void *)address, size};
     return syscall(SYS_process_vm_readv, (long)session.pid, &local, 1UL, &remote, 1UL, 0UL) == (ssize_t)size;

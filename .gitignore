@@ -54,3 +54,7 @@ _deps/
 .vs/
 .vscode/
 CppProperties.json
+
+# ---- the PS5 title folder: image.bin is made from the game ----
+dist/
+.local/

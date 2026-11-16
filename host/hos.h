@@ -94,6 +94,9 @@ extern uint64_t hos_space_end;   /* web: the guest window ends where the host's 
 #else
 #define HOS_SPACE_END 0x8000000000ULL
 #endif
+#ifdef __PROSPERO__
+#include "ps5/ps5_layout.h"   /* (the console's window: 64 GiB, the heap from 16 GiB) */
+#endif
 /* (longshot) host pointer of the n guest bytes at a, NULL unless all of them lie in the guest window. For addresses
    and sizes host code takes from guest memory or arguments before it reads or writes there: GP alone wraps around
    to any host address. */

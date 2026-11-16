@@ -1387,6 +1387,19 @@ static void cmd_reserve_rec(cmd_rec *o, size_t need) {
     while (used + need + OP_RESERVE > cap) cap *= 2;
     unsigned cls;
     uint8_t *b = (uint8_t *)pool_get(cap, &cls, "native NVN: recording buffer");
+#ifdef __PROSPERO__
+    /* (PS5) the console's one pool: with no 2 MiB piece free for the heap's next segment even 64 KiB is not found
+       (in Hyrule Field: "recording buffer (65536 bytes)" with 112 MiB free in 274 pieces, the title closed), while the
+       renderer, told the pool is short, gives its textures back within presents. Tried again for up to 3 s. */
+    for (int tries = 0; !b && tries < 150; tries++) {
+        extern void ps5_heap_trim(void) __attribute__((weak));
+        if (ps5_heap_trim) ps5_heap_trim();
+        Sleep(20);
+        b = (uint8_t *)pool_get(cap, &cls, "native NVN: recording buffer");
+        if (b) hos_log("nvn: recording buffer (%zu bytes) found after %d ms", cap, (tries + 1) * 20);
+    }
+#endif
+    if (!b) die("recording buffer (%zu bytes)", cap);
     if (o->seg) {
         memcpy(b, o->seg, used);
         InterlockedAdd64(&seg_bytes, -(LONG64)(o->end - o->seg));
