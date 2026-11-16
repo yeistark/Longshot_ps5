@@ -148,6 +148,10 @@ def jobs_for(rt64, gen_dir):
         out.append((os.path.join(imgui, *f.split("/")), os.path.join(OUT, "obj", "vk_imgui_" + os.path.basename(f)[:-4] + ".o"),
                     vfl + imgui_fl, imgui_digest))
     out.append((os.path.join(gen_dir, "ui_fonts.cpp"), os.path.join(OUT, "obj", "vk_ui_fonts.o"), COMMON + ["-O0", "-w"], ""))
+    # (the console's own C++: host/ps5/*.cpp, with the back end's flags)
+    for f in sorted(os.listdir(PS5)):
+        if f.endswith(".cpp"):
+            out.append((os.path.join(PS5, f), os.path.join(OUT, "obj", "ps5_" + f[:-4] + ".o"), vfl, vk_digest))
     for s in upstream.vk_sources():
         if os.path.basename(s) == "vk_ngx_msvc_rt.cpp":
             continue

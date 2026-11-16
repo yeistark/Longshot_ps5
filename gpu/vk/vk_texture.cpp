@@ -1552,7 +1552,24 @@ bool upload_inner(Texture& tex, const Ranges* dirty);
 bool upload(Texture& tex, const Ranges* dirty) {
     const auto t0 = std::chrono::steady_clock::now();
     up_route = UP_CPU;
+#ifdef __PROSPERO__
+    // (hookshot-ps5: a buffer of the upload (the 7 MB of its decode) that the heap could not give, the console's memory free but
+    // in pieces under 7 MB (752 MiB in 2071 pieces, the largest 6 MiB), ended the title with an uncaught bad_alloc. The upload
+    // fails as one that found no staging does, and is tried again 30 frames on)
+    bool ok;
+    try {
+        ok = upload_inner(tex, dirty);
+    } catch (const std::bad_alloc&) {
+        ok = false;
+        tex.bc_retry_frame = frame_no + 30;
+        static std::atomic<int> told{0};
+        if (told++ < 40)
+            logf("vk: texture #%u %#llx %ux%u x%u NVN %#x: its upload found no memory for its buffers: tried again in 30 frames", tex.id,
+                 (unsigned long long)tex.gpu, tex.width, tex.height, tex.layers, tex.nvn_format);
+    }
+#else
     const bool ok = upload_inner(tex, dirty);
+#endif
     const int64_t ns = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - t0).count();
     frame_upload_ns.fetch_add(ns, std::memory_order_relaxed);
     std::lock_guard lk(up_mu);
@@ -2933,7 +2950,7 @@ Texture* texture_touch(Texture* tex, bool for_sampling) {
     }
     // (longshot) a BC3 image whose last upload failed waits before the next try: its upload stages the whole ASTC source (some
     // 200 MB for a terrain array), not to be repeated every submission while the memory it needs is not there
-    if (tex->bc && !tex->uploaded && tex->bc_retry_frame > frame_no) return tex;
+    if (!tex->uploaded && tex->bc_retry_frame > frame_no) return tex;   // (a BC3 one, or one that found no memory: PS5)
     const auto up0 = std::chrono::steady_clock::now();
     const bool up_ok = upload(*tex, partial || sparse_written ? &dirty : nullptr);
     {   // (an upload over 15 ms: what it was, 60 of them)
@@ -3006,6 +3023,8 @@ Texture* texture_touch(Texture* tex, bool for_sampling) {
         if (told++ < 40)
             logf("vk: BC3 texture #%u %#llx %ux%u x%u: its upload failed (%s): tried again in 30 frames", tex->id,
                  (unsigned long long)tex->gpu, tex->width, tex->height, tex->layers, astc_fail ? astc_fail : "unknown");
+    } else if (tex->bc_retry_frame > frame_no) {
+        // (found no memory for its buffers: not marked uploaded, tried again from that frame)
     } else {
         tex->uploaded = true;   // (not retried every draw; a write to its memory tries again)
         tex->upload_gen = gen;
