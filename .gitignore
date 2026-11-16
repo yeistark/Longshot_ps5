@@ -58,3 +58,6 @@ CppProperties.json
 # ---- the PS5 title folder: image.bin is made from the game ----
 dist/
 .local/
+
+# (PS5) logs captured from the console and the test settings sent to it
+klog_*.txt
