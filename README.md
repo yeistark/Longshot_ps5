@@ -92,8 +92,7 @@ limits the frame rate today.
    restart Windows: do, and drag the `.nup` onto it again. It asks for your PS5's IP address: type it to have the title
    sent to the console when it is built (its homebrew environment and FTP server must be running), or press Enter to
    copy it yourself.
-4. Wait. The first build takes one to two hours; it asks once for the Ubuntu password (to install the packages it
-   needs). When it ends, the `PPSA99025` folder is beside the `.bat`, and on the console if you gave its address.
+4. Wait. The first build takes one to two hours. When it ends, the `PPSA99025` folder is beside the `.bat`, and on the console if you gave its address.
 
 **On Linux** (Ubuntu 24.04 or similar):
 
@@ -102,7 +101,8 @@ sudo bash build-title.sh --install-packages     # once: the packages it needs (a
 bash build-title.sh <your game.nup> --ps5 <your PS5's address>
 ```
 
-Without `--ps5` it only builds; the title is in `PS5_Homebrews/Longshot_ps5/dist/PPSA99025`. Run either one again
+Without `--ps5` it only builds; the title is in `PS5_Homebrews/Longshot_ps5/dist/PPSA99025` (the `.bat` builds in Ubuntu's
+`~/Longshot_PS5` and copies the folder beside itself). Run either one again
 after an interruption or to update: what is done is not done again, and an update rebuilds only what changed.
 
 The rest of this section is what that script does, step by step, for those who want to build by hand.

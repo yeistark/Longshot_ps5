@@ -69,13 +69,14 @@ set "LONGSHOT_PS5=%PS5_ADDRESS%"
 set "WSLENV=LONGSHOT_GAME/p:LONGSHOT_OUT/p:LONGSHOT_SCRIPT/p:LONGSHOT_PS5"
 
 echo.
-echo == Ubuntu's packages (Ubuntu may ask for the password you chose for it)
+echo == Ubuntu's packages
 wsl.exe -d %DISTRO% -u root -- bash -c "tr -d '\r' < \"$LONGSHOT_SCRIPT\" > /tmp/longshot-build-title.sh && bash /tmp/longshot-build-title.sh --install-packages"
 if errorlevel 1 goto :fail
 
 echo.
 echo == The build: an hour or more the first time, minutes after that
-wsl.exe -d %DISTRO% --cd ~ -- bash -c "tr -d '\r' < \"$LONGSHOT_SCRIPT\" > ~/longshot-build-title.sh && bash ~/longshot-build-title.sh"
+rem (in a folder of its own, ~/Longshot_PS5: a PS5_Homebrews folder may hold other projects' checkouts)
+wsl.exe -d %DISTRO% --cd ~ -- bash -c "tr -d '\r' < \"$LONGSHOT_SCRIPT\" > ~/longshot-build-title.sh && LONGSHOT_HOME=~/Longshot_PS5 bash ~/longshot-build-title.sh"
 if errorlevel 1 goto :fail
 
 echo.

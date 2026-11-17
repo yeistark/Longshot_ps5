@@ -78,6 +78,9 @@ if [[ ! -f $here/build.py || ! -f $here/../nx2/lift.py ]]; then
         git -c advice.detachedHead=false clone -q --branch "$REF" "$REPO" "$home/Longshot_ps5" ||
             die "could not clone $REPO"
     else
+        # (a folder of the same name from another repository, such as a checkout of upstream's: never moved)
+        [[ $(git -C "$home/Longshot_ps5" remote get-url origin 2> /dev/null) == "$REPO" ]] ||
+            die "$home/Longshot_ps5 is a checkout of another repository: move it, or set LONGSHOT_HOME to another folder"
         git -C "$home/Longshot_ps5" fetch -q --force --tags origin
         git -C "$home/Longshot_ps5" checkout -q "$REF" ||
             die "$home/Longshot_ps5 has changes of its own: build it with its own ps5/build-title.sh"
