@@ -20,7 +20,7 @@
 # --ps5 <address>: when the title is built, send it to the console over FTP (port 2121, or LONGSHOT_FTP_PORT):
 #   the title folder to /data/homebrew/PPSA99025 and your game file to /data/lichii/roms/oot/oot.nup (skipped when
 #   the console already has a file of its size). Close the game on the console first.
-# --jobs N: compile N files at once. By default your cores less two, and no more than one for each 2 GB of memory.
+# --jobs N: compile N files at once. By default your cores less two, and no more than one for each 3 GB of memory.
 #   A build that is killed for want of memory wants fewer (--jobs 2).
 # --out DIR: also copy the finished title folder into DIR.
 set -euo pipefail
@@ -249,7 +249,8 @@ run zstd bash ps5/tools/build-zstd.sh
 step "the title: the game, the runtime and the renderer compiled and linked (30 to 60 minutes the first time)"
 title="$root/dist/$TITLE"
 if [[ -z $jobs ]]; then
-    jobs=$(awk -v cores="$(nproc)" '/MemTotal/ { m = int($2 / 2097152); c = cores - 2; j = c < m ? c : m; print j < 1 ? 1 : j }' /proc/meminfo)
+    # (one for each 3 GB: with 8 GB under WSL, three at once took Ubuntu down for want of memory, 2026-11-17)
+    jobs=$(awk -v cores="$(nproc)" '/MemTotal/ { m = int($2 / 3145728); c = cores - 2; j = c < m ? c : m; print j < 1 ? 1 : j }' /proc/meminfo)
 fi
 note "$jobs files at once (--jobs)"
 "$python" -I ps5/build.py --jobs "$jobs" --shortest-first 2>&1 | tee "$logs/title.log" ||
