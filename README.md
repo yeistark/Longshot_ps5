@@ -79,6 +79,34 @@ limits the frame rate today.
 
 ## Build
 
+### The easy way: one command
+
+**On Windows** (10 or 11, with WSL 2):
+
+1. Download [`ps5/build-windows.bat`](ps5/build-windows.bat) and [`ps5/build-title.sh`](ps5/build-title.sh) into the
+   same folder (on the GitHub page of each file: *Download raw file*).
+2. If Ubuntu is not installed yet: open PowerShell as administrator, run `wsl --install -d Ubuntu-24.04`, restart
+   Windows if it asks, then open "Ubuntu 24.04" from the Start menu once and choose a user name and a password.
+3. Drag your game's `.nup` file onto `build-windows.bat`. It asks for your PS5's IP address: type it to have the title
+   sent to the console when it is built (its homebrew environment and FTP server must be running), or press Enter to
+   copy it yourself.
+4. Wait. The first build takes one to two hours; it asks once for the Ubuntu password (to install the packages it
+   needs). When it ends, the `PPSA99025` folder is beside the `.bat`, and on the console if you gave its address.
+
+**On Linux** (Ubuntu 24.04 or similar):
+
+```sh
+sudo bash build-title.sh --install-packages     # once: the packages it needs (apt)
+bash build-title.sh <your game.nup> --ps5 <your PS5's address>
+```
+
+Without `--ps5` it only builds; the title is in `PS5_Homebrews/Longshot_ps5/dist/PPSA99025`. Run either one again
+after an interruption or to update: what is done is not done again, and an update rebuilds only what changed.
+
+The rest of this section is what that script does, step by step, for those who want to build by hand.
+
+### By hand
+
 Beside this repository the build needs the PS5 Vulkan driver, the payload SDK with this port's heap changes, a few
 headers, and FFmpeg and zstd built for the console. All of them are public.
 
@@ -89,7 +117,7 @@ git clone https://github.com/mihawk-99/PS5_Vulkan.git       # Mesa's RADV for th
 git clone https://github.com/mihawk-99/PS5_PayloadSDK.git
 ```
 
-### 1. The payload SDK, with the heap patch
+#### 1. The payload SDK, with the heap patch
 
 The port needs two heap features the SDK fork does not have yet: more arenas while the shaders are prepared, and a large
 first segment so that the console's fragmented memory cannot starve the heap. They are in
@@ -102,7 +130,7 @@ patch -d sdk-src -p1 < Longshot_ps5/ps5/sdk/ps5-payload-sdk-heap.patch
 bash sdk-src/platform/tools/setup-sdk.sh "$PWD/Longshot_ps5/.local/ps5-deps/ps5-payload-sdk" 55a2de0 "$PWD/downloads"
 ```
 
-### 2. The driver
+#### 2. The driver
 
 ```sh
 cd ~/PS5/PS5_Vulkan
@@ -111,7 +139,7 @@ tools/setup-native-dependencies.sh
 tools/build-radv.sh release          # .deps/native/radv-release: the build titles link
 ```
 
-### 3. Headers, FFmpeg and zstd
+#### 3. Headers, FFmpeg and zstd
 
 ```sh
 cd ~/PS5/Longshot_ps5
@@ -124,7 +152,7 @@ ps5/tools/build-ffmpeg.sh
 ps5/tools/build-zstd.sh
 ```
 
-### 4. The game: lift, shader list, title
+#### 4. The game: lift, shader list, title
 
 ```sh
 cd ~/PS5/Longshot_ps5
@@ -134,8 +162,8 @@ mkdir -p work/lift/image
 OOT_WORK=$PWD/work/lift python3 -I nx2/lift.py --standalone --write --exefs $PWD/work/game/exefs --work $PWD/work/lift
 
 # the list of the game's shaders, for the first start's preparation
-python3 -I nx2/nup.py <your game.nup> --only romfs --extract work/game
-python3 -I nx2/shader_census.py work/game/romfs --out work/longshot_shaders.bin
+# (only the archives with shaders are taken out of the .nup, then removed: 15 s, not the whole 25 GB romfs)
+python3 -I ps5/tools/shader-list.py <your game.nup> --out work/longshot_shaders.bin
 
 # compile and link the title into dist/PPSA99025
 python3 -I ps5/build.py --jobs 4 --shortest-first
