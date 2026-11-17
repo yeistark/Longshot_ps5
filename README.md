@@ -2,7 +2,7 @@
   <br>
   <img src="assets/longshot.png" alt="Longshot" width="200">
   <br>
-  <b>Longshot for PS5</b>
+  <b>Longshot for PS5 (unofficial)</b>
   <br>
 </h1>
 
@@ -19,6 +19,11 @@
   <a href="#updating">Updating</a> |
   <a href="#license-and-credits">License + Credits</a>
 </p>
+
+> [!WARNING]
+> **This is an unofficial port**, not made or supported by MagicBean or the Longshot team. Do not ask them for help with
+> it: report PS5 problems in [this repository's issues](https://github.com/yeistark/Longshot_ps5/issues). The official
+> Longshot (Windows, Linux) is at [longshot.magicbean.dev](https://longshot.magicbean.dev/).
 
 This repository builds [Longshot](https://git.magicbean.dev/MagicBeanDev/Longshot) (the static recompilation of *The
 Legend of Zelda: Ocarina of Time* for Nintendo Switch 2, for Windows and Linux) as a native title for a PS5 that runs
@@ -293,7 +298,7 @@ over, copy these into the new folder:
 
 ## License and credits
 
-Longshot for PS5 is free software under the [GNU General Public License, version 3 or later](LICENSE), as Longshot is.
+This unofficial PS5 port is free software under the [GNU General Public License, version 3 or later](LICENSE), as Longshot is.
 
     Hookshot: Copyright (C) 2026 NotRexed and the Hookshot contributors
     Longshot: Copyright (C) 2026 the Longshot contributors
