@@ -9599,6 +9599,11 @@ void precompile_at_create() {
     // (every program read in here, kept from now on: its records are taken as they are read, so the load its create call
     // queues finds none and makes none of its noted pipelines. Those are asked of the caches here, as that load would)
     std::vector<Program*> fallbacks, kept;
+#ifdef __PROSPERO__
+    // (the console: every mesh fallback program read from its slow disk before the title took over 20 minutes at each start,
+    // docs/PS5.md. Left to the create calls' loads and the first draws; RX_VK_AT_CREATE_FALLBACKS=1: read here, as upstream)
+    if (env_on("RX_VK_AT_CREATE_FALLBACKS"))
+#endif
     program_cache_load_some({}, [&](Program& p) {
         ensure_layout(p);
         kept.push_back(&p);

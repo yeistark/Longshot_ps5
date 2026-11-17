@@ -99,9 +99,16 @@ and its last step keeps every noted pipeline alive, memory the console does not 
 
 What it does not do is take the stutter of a first draw away: play still reads each program from `longshot_programs.bin`
 (6.5 GB once all are prepared) when it is first drawn, and that read is the stutter (79 slow submits after the preparation,
-80 before, 2026-11-16). Longshot's way of reading them earlier, `RX_VK_LOAD=create`, does not fit the console: on a GPU
-without mesh shaders every mesh fallback program is read and kept before the title at each start (over 20 minutes there),
-and a session without that step ran out of memory at a zone change.
+80 before, 2026-11-16); the sampler puts 90% of that read in the kernel's read call. Longshot's way of reading them
+earlier, `RX_VK_LOAD=create` with `RX_VK_PRECOMPILE=1`, does fit once one step is left out: on a GPU without mesh shaders
+upstream reads every mesh fallback program before the title at each start (over 20 minutes on the console), and the
+console leaves those to the create calls' loads and their first draws (`gpu/vk/vk_draw.cpp` `precompile_at_create`;
+`RX_VK_AT_CREATE_FALLBACKS=1`: as upstream). Its first start builds every noted pipeline into the caches once (24 minutes
+after a preparation, with the bar). Over four minutes of zone changes with the sampler on: the stutter's program reads
+went from 393 ms to 56-84 ms. With the two load workers upstream gives play, a zone change queued hundreds of loads and a
+draw waited up to 3.1 s for its program, and the map flickered; `RX_VK_LOAD_WORKERS=4` and
+`RX_VK_LOAD_WORKERS_LOADING=6` took both away (the longest frame 282 ms). Upstream's safety net writes
+`longshot_load_start.txt` after sessions with long waits; `RX_VK_LOAD=create` set in the environment goes first.
 
 Our pipeline cache is not written by it. `RX_VK_PREPARE_ONCE_NO_DRIVER=1`: step 1's translation alone;
 `RX_VK_PREPARE_ONCE_THREADS=<n>`: step 3's workers (all the CPUs but two, six at most); `RX_VK_PREPARE_ONCE_EXIT=0`: the
