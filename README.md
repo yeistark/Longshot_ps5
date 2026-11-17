@@ -87,7 +87,9 @@ limits the frame rate today.
    same folder (on the GitHub page of each file: *Download raw file*).
 2. If Ubuntu is not installed yet: open PowerShell as administrator, run `wsl --install -d Ubuntu-24.04`, restart
    Windows if it asks, then open "Ubuntu 24.04" from the Start menu once and choose a user name and a password.
-3. Drag your game's `.nup` file onto `build-windows.bat`. It asks for your PS5's IP address: type it to have the title
+3. Drag your game's `.nup` file onto `build-windows.bat`. The first time, if you have no `.wslconfig`, it makes one
+   that gives WSL 16 GB of swap (without it, a PC with 16 GB of memory runs out during the build) and asks you to
+   restart Windows: do, and drag the `.nup` onto it again. It asks for your PS5's IP address: type it to have the title
    sent to the console when it is built (its homebrew environment and FTP server must be running), or press Enter to
    copy it yourself.
 4. Wait. The first build takes one to two hours; it asks once for the Ubuntu password (to install the packages it

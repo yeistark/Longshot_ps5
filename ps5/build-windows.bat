@@ -40,15 +40,18 @@ if errorlevel 1 (
     goto :fail
 )
 
-rem (WSL gets half of the PC's memory and a small swap: with 8 GB the compiler ran out and Ubuntu was restarted, killing
-rem the build. Without a .wslconfig of the user's own, one with 16 GB of swap, and WSL restarted so that it applies)
+rem (WSL gets half of the PC's memory and a 2 GB swap: with 8 GB the compiler ran out and Ubuntu was restarted, killing
+rem the build, 2026-11-17. Without a .wslconfig of the user's own, one with 16 GB of swap; it applies once WSL starts
+rem again, so the build waits for a restart of Windows. wsl --shutdown after the crashes left WSL's service broken)
 if not exist "%USERPROFILE%\.wslconfig" (
     > "%USERPROFILE%\.wslconfig" (
         echo [wsl2]
         echo swap=16GB
     )
-    echo Made %USERPROFILE%\.wslconfig with 16 GB of swap for WSL, so that the build does not run out of memory.
-    wsl.exe --shutdown
+    echo Made %USERPROFILE%\.wslconfig: 16 GB of swap for WSL, so that the build does not run out of memory.
+    echo.
+    echo Restart Windows, then drag your .nup onto this file again.
+    goto :stop
 )
 
 set "PS5_ADDRESS=%~2"
@@ -79,6 +82,10 @@ echo.
 echo Done: %~dp0PPSA99025
 if not "%PS5_ADDRESS%"=="" echo It is on your PS5 too: start Longshot from the home screen.
 echo The first start prepares every shader ^(about 2.5 hours^) and closes by itself; the second goes to the game.
+pause
+exit /b 0
+
+:stop
 pause
 exit /b 0
 
