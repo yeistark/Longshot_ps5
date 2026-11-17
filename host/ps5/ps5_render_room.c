@@ -24,3 +24,18 @@ uint64_t hos_ps5_render_short(void) {
     const uint64_t room = hos_ps5_direct_room();
     return room < (uint64_t)low ? (uint64_t)low - room : 0;
 }
+
+/* (PS5) How many timeline values past a dead texture's last use its image and memory wait before they are freed
+   (gpu/vk/vk_texture.cpp's sweep of the dead ones). Upstream frees at its last use; on the console a texture freed while a
+   submission still read it hung the GPU (unmapped at once, and the GPU waits on the fault instead of reporting it): an
+   upload after an hour at 338 MiB free, a draw within a minute with the textures' memory at 4 GB (2026-11-17). About six
+   values a frame: 48 is some eight frames. HOS_PS5_DEAD_MARGIN=0: as upstream. */
+uint64_t hos_ps5_dead_margin(void) {
+    static int64_t margin = -1;
+    if (margin < 0) {
+        const char *e = getenv("HOS_PS5_DEAD_MARGIN");
+        margin = e ? atoll(e) : 48;
+        if (margin < 0) margin = 0;
+    }
+    return (uint64_t)margin;
+}

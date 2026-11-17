@@ -35,6 +35,9 @@
 #include <vector>
 
 #include "vk_texture.h"
+#ifdef __PROSPERO__
+extern "C" uint64_t hos_ps5_dead_margin(void);   // (host/ps5/ps5_render_room.c)
+#endif
 #include "vk_menu.h"
 #include "vk_draw.h"
 #include "vk_programs.h"
@@ -4761,7 +4764,11 @@ void texture_frame(uint64_t completed) {
     compact_step(completed);   // (longshot, RX_VK_COMPACT: while its pass is open nothing of the textures' pool is freed)
     for (auto it = dead.begin(); it != dead.end();) {
         if (compact.in_pass) break;   // (longshot, RX_VK_COMPACT: nothing is freed while a pass is open; a frame or two)
+#ifdef __PROSPERO__
+        if (it->value + hos_ps5_dead_margin() > completed) {   // (host/ps5/ps5_render_room.c: a margin past its last use)
+#else
         if (it->value > completed) {
+#endif
             ++it;
             continue;
         }
