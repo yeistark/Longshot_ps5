@@ -77,7 +77,7 @@ headers, and FFmpeg and zstd built for the console. All of them are public.
 
 ```sh
 mkdir ~/PS5 && cd ~/PS5
-git clone <this repository's URL> Longshot_ps5
+git clone https://github.com/yeistark/Longshot_ps5.git
 git clone https://github.com/mihawk-99/PS5_Vulkan.git       # Mesa's RADV for the PS5, and the link recipe
 git clone https://github.com/mihawk-99/PS5_PayloadSDK.git
 ```
