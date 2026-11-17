@@ -39,6 +39,10 @@ void hos_ps5_startup(const char *title_name) {
        noted pipeline into the caches once; the mesh fallback programs are not read before the title (docs/PS5.md). Set
        here, RX_VK_LOAD=create goes before upstream's longshot_load_start.txt.
      - RX_VK_LOAD_WORKERS=4, RX_VK_LOAD_WORKERS_LOADING=6: with two, a zone change's loads queued and a draw waited 3.1 s.
+     - RX_VK_IMPORT_SPAN_MB=64 (upstream's): at 4, Hookshot's, an indexed draw of program 60f79269504c4af3 in Kokiri
+       Forest (adult Link) hung the GPU within a minute, two runs of two, after the draw before it of the same program
+       finished: a buffer across a chunk's end not imported whole, and the console's GPU waits on the fault rather than
+       reporting it. At 64, 14 minutes there and no hang, 760 MB imported against 577 (2026-11-17).
      - RX_VK_COMPACT=0: the VRAM compaction off; GPU faults followed it on the console.
      - RX_VK_FORCE_MESH_FALLBACK=1: the task and mesh stages as compute; the console's RADV hangs on the native ones. */
 static const char *const defaults[][2] = {
@@ -49,7 +53,7 @@ static const char *const defaults[][2] = {
     {"HOS_PS5_RESERVE_MB", "3072"}, {"RX_VK_WB_DIFF", "0"},
     {"RX_VK_PREPARE_ONCE", "1"}, {"RX_VK_LOAD", "create"}, {"RX_VK_PRECOMPILE", "1"},
     {"RX_VK_LOAD_WORKERS", "4"}, {"RX_VK_LOAD_WORKERS_LOADING", "6"},
-    {"RX_VK_IMPORT_CHUNK_MB", "1"}, {"RX_VK_IMPORT_SPAN_MB", "4"}, {"RX_VK_COMPACT", "0"},
+    {"RX_VK_IMPORT_CHUNK_MB", "1"}, {"RX_VK_IMPORT_SPAN_MB", "64"}, {"RX_VK_COMPACT", "0"},
     {"RX_VK_WORKERS", "1"}, {"RX_VK_FORCE_MESH_FALLBACK", "1"},
     /* (the renderer's image blocks at 16 MB, not 128: a block goes back to the console's pool only once empty, and the
        pool is shared with the game's pages and the heap. Below HOS_PS5_TEX_RESERVE_MB free, an image of 1 MB and up
