@@ -58,6 +58,9 @@
 #include "vk_programs.h"
 #include "readback_late.h"
 #include "hold_gpu.h"   // (longshot: sync_watch's rule for queues stopped past hold_ms)
+#ifdef __PROSPERO__
+#include "../../host/ps5/ps5_code_idle.h"   // (the console: the lowered code of programs not drawn for a while let go)
+#endif
 #include "vk_work.h"   // (after the others: counts the commands that do GPU work, for full_barrier)
 
 namespace mkwvk {
@@ -7040,6 +7043,9 @@ void fill_replay_table(MkwVkRenderer& t) {
     t.nvn_set_texture_pool_size = set_texture_pool_size;
     t.nvn_texture_released = texture_released_of;
     t.nvn_program_released = program_released_locked;
+#ifdef __PROSPERO__
+    hos_ps5_code_idle_start(do_program_released);   // (host/ps5/ps5_code_idle.cpp: as the game's free call lets a program's code go)
+#endif
     t.nvn_program_created = programs_created;
     programs_life_on(), programs_load_at_create();
     t.nvn_read_texels = read_texels;

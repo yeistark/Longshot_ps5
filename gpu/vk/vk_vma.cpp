@@ -429,6 +429,7 @@ void vma_log_heaps() {
 /// already counted as the game's: the renderer grew to 3.3 GB of blocks with "8.3 of 8.6 GB" used while the game's next
 /// page found no memory.
 extern "C" uint64_t hos_ps5_direct_free(void);   // (host/ps5/win32_ps5.c: the largest free piece)
+extern "C" uint64_t hos_ps5_render_short(void);  // (host/ps5/ps5_render_room.c: how far the console is below its low mark)
 static uint64_t ps5_render_budget(uint64_t own) {
     static const uint64_t cap = (getenv("HOS_PS5_RENDER_MB") ? (uint64_t)atoi(getenv("HOS_PS5_RENDER_MB")) : 2560) << 20;
     static const uint64_t reserve = (getenv("HOS_PS5_RESERVE_MB") ? (uint64_t)atoi(getenv("HOS_PS5_RESERVE_MB")) : 2048) << 20;
@@ -452,6 +453,9 @@ bool vram_usage(uint64_t* used, uint64_t* budget, uint64_t* block_free) {
             f += b[h].statistics.blockBytes - std::min(b[h].statistics.blockBytes, b[h].statistics.allocationBytes);
         }
         *used = own - f, *budget = ps5_render_budget(own);
+        // (the console short of memory: the budget under what is allocated by the shortfall, host/ps5/ps5_render_room.c)
+        // (as allowed, of which vk_texture.cpp keeps 90%: what goes is the shortfall, not a tenth of everything as well)
+        if (const uint64_t s = hos_ps5_render_short()) *budget = std::min(*budget, (*used > s ? *used - s : 0) / 9 * 10);
         if (block_free) *block_free = 0;
         return true;
     }

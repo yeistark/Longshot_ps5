@@ -85,6 +85,9 @@
 #include "vk_pipelines.h"
 #include "warm_bounded.h"
 #include "crash_markers.h"   // (the files that count the starts that crashed in a step: a close puts them back)
+#ifdef __PROSPERO__
+#include "../../host/ps5/ps5_code_idle.h"   // (the console: the lowered code of programs not drawn for a while let go)
+#endif
 #include "vk_work.h"   // (after the others: counts the commands that do GPU work, for full_barrier)
 
 namespace mkwvk {
@@ -7619,6 +7622,9 @@ void draw(VkCommandBuffer cmd, NvnState& s, const DrawArgs& d) {
     {
         PROF_HOT(PROF_PROGRAM);
         ParLock lk(d.mesh);   // (graphics programs: each thread's picks, program_pick's own lock)
+#ifdef __PROSPERO__
+        hos_ps5_code_idle_touch(s.prog.serial);
+#endif
         cp = program_for(s, d.mesh ? ProgramKind::Mesh : ProgramKind::Graphics, types);
     }
     if (use.on) use.program(cp, cp && cp->ready.load(std::memory_order_acquire));
@@ -10392,6 +10398,9 @@ void dispatch(VkCommandBuffer cmd, NvnState& s, uint32_t x, uint32_t y, uint32_t
     }
     const uint8_t types[8]{};
     ProgramUse use(s.prog, s.has_prog, true);   // (the program's first dispatch, for the census: vk_programs.h)
+#ifdef __PROSPERO__
+    hos_ps5_code_idle_touch(s.prog.serial);
+#endif
     const Program* cp = program_for(s, ProgramKind::Compute, types);
     if (use.on) use.program(cp, cp && cp->ready.load(std::memory_order_acquire));
     dclock.t_prog = slow_dispatch_timing() ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
@@ -10818,6 +10827,9 @@ void dry_mark_written(NvnState& s, bool compute, bool first) {
         return;
     }
     const uint8_t types[8]{};
+#ifdef __PROSPERO__
+    hos_ps5_code_idle_touch(s.prog.serial);
+#endif
     const Program* p = program_for(s, ProgramKind::Compute, types);
     if (!p || !p->ready.load(std::memory_order_acquire) || p->failed) return;
     for (const Stage& st : p->stages)
