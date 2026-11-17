@@ -87,6 +87,7 @@
 #include "crash_markers.h"   // (the files that count the starts that crashed in a step: a close puts them back)
 #ifdef __PROSPERO__
 #include "../../host/ps5/ps5_code_idle.h"   // (the console: the lowered code of programs not drawn for a while let go)
+extern "C" void ps5_heap_arenas(unsigned count) __attribute__((weak));   // (the SDK's heap: arenas new threads spread over)
 #endif
 #include "vk_work.h"   // (after the others: counts the commands that do GPU work, for full_barrier)
 
@@ -9724,7 +9725,17 @@ void precompile_run(void (*progress)(size_t done, size_t total)) {
         // (and where the driver's own cache lost what the marker says was built: notes_lost_by_driver)
         if (precompile_covers_notes() && !env_on("LONGSHOT_PREPARE_ONLY") && notes_lost_by_driver())
             remove(precompile_built_path().c_str());
-        if (!precompile_covers_notes()) precompile_warm(progress);
+        if (!precompile_covers_notes()) {
+#ifdef __PROSPERO__
+            // (13 workers on the title's one arena: 1.3-1.9 cores busy, most of it the system's, 3,700 of 7,520 pipelines in
+            // 30 min, slowing; the prepare's own steps run on 8, ps5_vk_prepare.inc. Play keeps one)
+            if (ps5_heap_arenas) ps5_heap_arenas(8);
+#endif
+            precompile_warm(progress);
+#ifdef __PROSPERO__
+            if (ps5_heap_arenas) ps5_heap_arenas(1);
+#endif
+        }
         if (precompile_covers_notes()) return precompile_at_create();
         // (the window was closed in it; or this is the preparation's own process, which leaves no marker: its warm filled
         // the driver's cache, the first start of the game warms again and loads at create calls from then on)
