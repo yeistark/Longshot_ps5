@@ -26,7 +26,7 @@
 set -euo pipefail
 
 REPO=${LONGSHOT_REPO:-https://github.com/yeistark/Longshot_ps5.git}
-REF=${LONGSHOT_REF:-main}
+REF=${LONGSHOT_REF:-longshot-ps5-v0.1.0-beta.1}   # (the release this file comes with: LONGSHOT_REF=main builds the newest)
 TITLE=PPSA99025
 VULKAN_REV=7f492b4c6f67a4e8c8c67a4272cfeef22abea9cc
 MESA_REV=0f86253f674c425052948eb3cb116c81e646a734

@@ -83,8 +83,8 @@ limits the frame rate today.
 
 **On Windows** (10 or 11, with WSL 2):
 
-1. Download [`ps5/build-windows.bat`](ps5/build-windows.bat) and [`ps5/build-title.sh`](ps5/build-title.sh) into the
-   same folder (on the GitHub page of each file: *Download raw file*).
+1. From the [latest release](https://github.com/yeistark/Longshot_ps5/releases/latest), download `build-windows.bat`
+   and `build-title.sh` into the same folder.
 2. If Ubuntu is not installed yet: open PowerShell as administrator, run `wsl --install -d Ubuntu-24.04`, restart
    Windows if it asks, then open "Ubuntu 24.04" from the Start menu once and choose a user name and a password.
 3. Drag your game's `.nup` file onto `build-windows.bat`. The first time, if you have no `.wslconfig`, it makes one
@@ -94,7 +94,8 @@ limits the frame rate today.
    copy it yourself.
 4. Wait. The first build takes one to two hours. When it ends, the `PPSA99025` folder is beside the `.bat`, and on the console if you gave its address.
 
-**On Linux** (Ubuntu 24.04 or similar):
+**On Linux** (Ubuntu 24.04 or similar), with `build-title.sh` from the
+[latest release](https://github.com/yeistark/Longshot_ps5/releases/latest):
 
 ```sh
 sudo bash build-title.sh --install-packages     # once: the packages it needs (apt)
