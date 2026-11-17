@@ -17,9 +17,12 @@ extern "C" int usleep(unsigned int);
 static void* ps5_new(std::size_t n) {
     if (!n) n = 1;
     if (void* p = std::malloc(n)) return p;
-    // (3 s by the clock, not a count of tries: the SDK's malloc waits 0.3 s itself when it finds nothing)
+    // (3 s by the clock, not a count of tries: the SDK's malloc waits 0.3 s itself when it finds nothing. 8 MiB and more: 0.3 s.
+    // Those want a piece the pool in pieces has none of, and waiting did not find one: a 4096x4096 texture's 16 MB upload buffer
+    // waited 3.6 s 17 times in 15 minutes and was never found (klog_longshot_42), each a frozen picture. Its upload is tried
+    // again 30 frames later; what does not catch bad_alloc would have met it 3 s later)
     const auto t0 = std::chrono::steady_clock::now();
-    const auto until = t0 + std::chrono::seconds(3);
+    const auto until = t0 + (n >= (8u << 20) ? std::chrono::milliseconds(300) : std::chrono::milliseconds(3000));
     for (int tries = 1; std::chrono::steady_clock::now() < until; tries++) {
         if (ps5_heap_trim) ps5_heap_trim();
         usleep(20000);
