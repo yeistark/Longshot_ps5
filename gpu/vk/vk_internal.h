@@ -236,6 +236,9 @@ void coopmat_init();   // vk_coopmat.cpp (once the device is made)
 /// A marker of another kind of GPU work (m: mirror sync, b: write-back, u: texture upload, g: GPU unswizzle; key: its
 /// pool or texture), RX_VK_CHECKPOINTS
 void checkpoint_mark(VkCommandBuffer cmd, uint64_t key, char kind);
+/// (a texture's upload: its size, NVN format and how it is uploaded go with the marker. flags: 1 sparse, 2 decoded ASTC,
+/// 16 cleared as all zero, 32 copied in chunks from several staging arenas, 64 copied from one)
+void checkpoint_mark_texture(VkCommandBuffer cmd, uint64_t key, char kind, uint32_t w, uint32_t h, int nvn_format, uint8_t flags);
 
 /// Parallel replay (vk_replay.cpp, RX_VK_PARALLEL): while segments of a submission are recorded on several threads,
 /// what they share (textures and their uploads, programs, pipelines, samplers, pools and memory stamps) is used under

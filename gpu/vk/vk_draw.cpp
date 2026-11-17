@@ -4749,6 +4749,13 @@ void checkpoint_mark(VkCommandBuffer cmd, uint64_t key, char kind) {
     checkpoints[i] = {key, texture_frame_no(), seq, kind};
     set_checkpoint(cmd, i, seq);
 }
+void checkpoint_mark_texture(VkCommandBuffer cmd, uint64_t key, char kind, uint32_t w, uint32_t h, int nvn_format, uint8_t flags) {
+    if (!checkpoints_on()) return;
+    const uint32_t seq = ++checkpoint_n, i = (seq - 1) & 0xFFFF;
+    checkpoints[i] = {key, texture_frame_no(), seq, kind};
+    checkpoints[i].count = (int)w, checkpoints[i].instances = (int)h, checkpoints[i].max = nvn_format, checkpoints[i].flags = flags;
+    set_checkpoint(cmd, i, seq);
+}
 
 void buffer_markers_init() {
     if (!vkCmdWriteBufferMarkerAMD) return;
@@ -4811,6 +4818,11 @@ void buffer_markers_report() {
                  checkpoint_kind(k.kind), (unsigned long long)k.prog, (unsigned long long)k.frame, k.count, k.instances,
                  k.flags & 1 ? ", indexed" : "", k.flags & 2 ? ", INDIRECT" : "", k.flags & 4 ? ", mesh" : "",
                  k.flags & 8 ? ", fallback" : "", k.max);
+        else if (k.kind == 'u' && k.count)
+            logf("vk:   %s: marker %u (%s %016llx, frame %llu: %dx%d NVN %#x%s%s%s%s%s)", what, s, checkpoint_kind(k.kind),
+                 (unsigned long long)k.prog, (unsigned long long)k.frame, k.count, k.instances, k.max,
+                 k.flags & 1 ? ", sparse" : "", k.flags & 2 ? ", decoded ASTC" : "", k.flags & 16 ? ", cleared as zero" : "",
+                 k.flags & 32 ? ", in chunks" : "", k.flags & 64 ? ", one copy" : "");
         else
             logf("vk:   %s: marker %u (%s %016llx, frame %llu)", what, s, checkpoint_kind(k.kind), (unsigned long long)k.prog,
                  (unsigned long long)k.frame);

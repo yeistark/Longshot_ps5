@@ -1763,7 +1763,8 @@ bool upload_all_zero(Texture& tex, uint64_t total, const Ranges* dirty, bool wid
         return false;
     }
     texture_resident_flush(&tex);
-    checkpoint_mark(upload_cmd(), tex.gpu, 'u');
+    checkpoint_mark_texture(upload_cmd(), tex.gpu, 'u', tex.width, tex.height, tex.nvn_format,
+                                (uint8_t)((tex.sparse ? 1 : 0) | (tex.astc ? 2 : 0) | 16));
     const VkImageSubresourceRange range{tex.aspect, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS};
     if (tex.aspect & (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT)) {
         const VkClearDepthStencilValue z{0.0f, 0};
@@ -1864,7 +1865,8 @@ bool upload_inner(Texture& tex, const Ranges* dirty) {
                 if (!st.buffer) return false;
                 if (buffer && st.buffer != buffer && !copies.empty()) {   // (a new arena: copy what the last one holds)
                     texture_resident_flush(&tex);
-                    checkpoint_mark(upload_cmd(), tex.gpu, 'u');
+                    checkpoint_mark_texture(upload_cmd(), tex.gpu, 'u', tex.width, tex.height, tex.nvn_format,
+                                                (uint8_t)((tex.sparse ? 1 : 0) | (tex.astc ? 2 : 0) | 32));
                     vkCmdCopyBufferToImage(upload_cmd(), buffer, tex.image, VK_IMAGE_LAYOUT_GENERAL,
                                            (uint32_t)copies.size(), copies.data());
                     copies.clear();
@@ -2021,7 +2023,8 @@ bool upload_inner(Texture& tex, const Ranges* dirty) {
     }
     if (!copies.empty()) {
         texture_resident_flush(&tex);
-        checkpoint_mark(upload_cmd(), tex.gpu, 'u');
+        checkpoint_mark_texture(upload_cmd(), tex.gpu, 'u', tex.width, tex.height, tex.nvn_format,
+                                    (uint8_t)((tex.sparse ? 1 : 0) | (tex.astc ? 2 : 0) | 64));
         vkCmdCopyBufferToImage(upload_cmd(), buffer, tex.image, VK_IMAGE_LAYOUT_GENERAL, (uint32_t)copies.size(),
                                copies.data());
     }
