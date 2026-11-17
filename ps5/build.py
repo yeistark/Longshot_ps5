@@ -33,6 +33,8 @@ import version   # noqa: E402
 import translator_files   # noqa: E402  (what the shader caches are good for)
 
 TITLE = "PPSA99025"   # (the title folder: dist/<TITLE>, /data/homebrew/<TITLE> on the console; ps5/sce_sys/param.json names it too)
+# (the renderer's files that draw with Dear ImGui: its include folder and flags. vk_crash_window.cpp: the crash window, upstream #983)
+IMGUI_UNITS = ("vk_imgui.cpp", "vk_menu.cpp", "vk_crash_window.cpp")
 
 # (the SDK ps5/build-title.sh installs at its pinned revision; before it did, PS5_VulkanTemplate's)
 SDK = os.environ.get("PS5_PAYLOAD_SDK") or next(
@@ -89,7 +91,7 @@ def jobs_for(rt64, gen_dir):
 
     # the runtime: host/ as Linux builds it, without SDL's loader (host/ps5/hos_sdl_ps5.c) and the Linux-only files
     host_digest = tree_digest(HOST, rt64, GEN) + tree_digest(os.path.join(VK), ext=("vk_api.h", "dlss_math.h"))
-    host_fl = COMMON + ["-I" + POSIX, "-D_GNU_SOURCE", "-include", os.path.join(PS5, "c_compat.h"),
+    host_fl = COMMON + ["-I" + os.path.join(PS5, "include"), "-I" + POSIX, "-D_GNU_SOURCE", "-include", os.path.join(PS5, "c_compat.h"),
                         "-I" + HOST, "-I" + rt64, "-I" + GEN, "-O2", "-mcx16", "-DA64_POLLING",
                         "-DA64_WRITE_TRACK", "-I" + os.path.join(OPUS, "include"), "-I" + os.path.join(FFMPEG, "include"),
                         "-I" + os.path.join(DEPS, "zstd", "include"),
@@ -159,10 +161,10 @@ def jobs_for(rt64, gen_dir):
         lib = os.path.relpath(s, VK).split(os.sep)[0] in ("eden", "sirit")
         fl = vfl + ([shader_stamp] if os.path.basename(s) == "vk_shader.cpp" else []) + \
             ([stamp] if os.path.basename(s) == "vk_menu.cpp" else []) + \
-            (imgui_fl if os.path.basename(s) in ("vk_imgui.cpp", "vk_menu.cpp") else [])
+            (imgui_fl if os.path.basename(s) in IMGUI_UNITS else [])
 
         out.append((s, os.path.join(OUT, "obj", "vk_" + rel + ".o"), fl,
-                    lib_digest if lib else vk_digest + (imgui_digest if os.path.basename(s) in ("vk_imgui.cpp", "vk_menu.cpp") else "")))
+                    lib_digest if lib else vk_digest + (imgui_digest if os.path.basename(s) in IMGUI_UNITS else "")))
     return out
 
 

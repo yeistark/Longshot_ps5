@@ -141,7 +141,12 @@ static void audio_fill(int16_t *frames, int count, void *user) {
     static uint8_t buf[256 * 8 * 4];
     const int frame_bytes = audio_channels * (audio_s16 ? 2 : 4);
     if (count > 256) count = 256;
-    audio_pull(audio_user, buf, count * frame_bytes);
+    void (*pull)(void *, uint8_t *, int) = audio_pull;
+    if (!pull) {   /* (closed: silence until the game opens it again) */
+        memset(frames, 0, (size_t)count * 2 * sizeof *frames);
+        return;
+    }
+    pull(audio_user, buf, count * frame_bytes);
     for (int i = 0; i < count; i++)
         for (int c = 0; c < 2; c++) {
             const int from = c < audio_channels ? c : 0;
@@ -153,12 +158,24 @@ static void audio_fill(int16_t *frames, int count, void *user) {
             }
         }
 }
-int hos_sdl_audio_open(int freq, int channels, int s16, void (*pull)(void *user, uint8_t *out, int len), void *user) {
+/* (upstream's playback devices: one here, the console's output; device is UINT32_MAX for the default, any other the same.
+   The platform's thread is started once and kept: a close leaves it playing silence, an open gives it the new stream) */
+void *hos_sdl_audio_open(unsigned device, int freq, int channels, int s16, void (*pull)(void *user, uint8_t *out, int len),
+                         void *user) {
+    static int started;
+    (void)device;
     if (freq != 48000) hos_log("ps5: the game's sound is %d Hz, played as 48000", freq);
-    if (channels < 1 || channels > 8) return 0;
-    audio_pull = pull, audio_user = user, audio_channels = channels, audio_s16 = s16;
-    return audio_start(audio_fill, NULL);
+    if (channels < 1 || channels > 8) return NULL;
+    audio_pull = NULL;
+    audio_user = user, audio_channels = channels, audio_s16 = s16;
+    audio_pull = pull;
+    if (!started) started = audio_start(audio_fill, NULL);
+    return started ? (void *)&audio_pull : NULL;
 }
+void hos_sdl_audio_close(void *audio) {
+    if (audio) audio_pull = NULL;
+}
+int hos_sdl_audio_alive(void *audio) { return audio != NULL; }
 int hos_sdl_audio_channels(void) { return 2; }
 
 /* ---- microphones: none ---- */
