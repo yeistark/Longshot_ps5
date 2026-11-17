@@ -189,7 +189,10 @@ extern "C" void hos_ps5_prepare_once_end(void) {
     if (ps5_once_done && (!e || atoi(e) != 0)) {
         logf("vk: prepare once: the shaders are prepared; closing, the next start goes straight to the game");
         fflush(nullptr);
-        exit(0);   // (the game starts in a new process, the heap the compiles left in pieces given back)
+        // (the game starts in a new process, the heap the compiles left in pieces given back. _exit, not exit: exit's teardown
+        // took a SIGSYS on a thread of the driver's and the console showed its crash report, klog_longshot_29; the files are
+        // written by now, the driver's cache waited for above)
+        _exit(0);
     }
     if (ps5_once_no_warm_set) setenv("RX_VK_NO_WARM", ps5_once_no_warm.c_str(), 1);
     else unsetenv("RX_VK_NO_WARM");
