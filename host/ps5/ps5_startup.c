@@ -39,8 +39,8 @@ void hos_ps5_startup(const char *title_name) {
        noted pipeline into the caches once; the mesh fallback programs are not read before the title (docs/PS5.md). Set
        here, RX_VK_LOAD=create goes before upstream's longshot_load_start.txt.
      - RX_VK_LOAD_WORKERS=4, RX_VK_LOAD_WORKERS_LOADING=6: with two, a zone change's loads queued and a draw waited 3.1 s.
-     - RX_VK_IMPORT_SPAN_MB=64 (upstream's): at 4, Hookshot's, an indexed draw of program 60f79269504c4af3 in Kokiri
-       Forest (adult Link) hung the GPU within a minute, two runs of two, after the draw before it of the same program
+     - RX_VK_IMPORT_SPAN_MB=64 (upstream's): at 4, Hookshot's, an indexed draw of program 60f79269504c4af3 in the Forest
+       Temple (adult Link) hung the GPU within a minute, two runs of two, after the draw before it of the same program
        finished: a buffer across a chunk's end not imported whole, and the console's GPU waits on the fault rather than
        reporting it. At 64, 14 minutes there and no hang, 760 MB imported against 577 (2026-11-17).
      - RX_VK_COMPACT=0: the VRAM compaction off; GPU faults followed it on the console.

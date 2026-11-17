@@ -154,7 +154,7 @@ here: with the fork as it is the title builds, without them.
 - A GPU fault is not reported: the GPU waits on it and the title ends 30 s later (`vk: FATAL: the GPU hung`).
   `RX_VK_CHECKPOINTS=1` names the draw (VK_AMD_buffer_marker), with its size since 2026-11-17. The one found so far was an
   import too narrow: `RX_VK_IMPORT_SPAN_MB` at 4 left a buffer across a chunk's end half imported (program
-  60f79269504c4af3, Kokiri Forest as an adult); 64, upstream's, is the console's default.
+  60f79269504c4af3, the Forest Temple); 64, upstream's, is the console's default.
 
 ## Known gaps
 
