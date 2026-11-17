@@ -40,6 +40,17 @@ if errorlevel 1 (
     goto :fail
 )
 
+rem (WSL gets half of the PC's memory and a small swap: with 8 GB the compiler ran out and Ubuntu was restarted, killing
+rem the build. Without a .wslconfig of the user's own, one with 16 GB of swap, and WSL restarted so that it applies)
+if not exist "%USERPROFILE%\.wslconfig" (
+    > "%USERPROFILE%\.wslconfig" (
+        echo [wsl2]
+        echo swap=16GB
+    )
+    echo Made %USERPROFILE%\.wslconfig with 16 GB of swap for WSL, so that the build does not run out of memory.
+    wsl.exe --shutdown
+)
+
 set "PS5_ADDRESS=%~2"
 if "%PS5_ADDRESS%"=="" (
     echo To send the title to your PS5 when it is built, type the console's IP address ^(for example 192.168.1.50^),
