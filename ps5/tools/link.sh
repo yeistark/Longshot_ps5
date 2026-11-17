@@ -17,7 +17,10 @@ archive=${RADV_ARCHIVE:-$root/.local/ps5-deps/radv/lib/libvulkan_radeon.ps5.a}
 export PS5_CLANG=${PS5_CLANG:-$(command -v clang)}
 tool="$vulkan/build/host/ps5-native-tool"
 native="$vulkan/tooling/native"
-param="$root/ps5/sce_sys/param.json"
+# (LONGSHOT_PS5_SCE_SYS=<folder>: another title's param.json and icon, e.g. ps5/sce_sys_next, a second title beside
+# PPSA99025 with caches of its own, to try an update and keep the first as it was)
+sce_sys=${LONGSHOT_PS5_SCE_SYS:-$root/ps5/sce_sys}
+param="$sce_sys/param.json"
 for file in "$archive" "$tool" "$param" "$sdk/bin/prospero-lld" "$vulkan/tools/radv-link.sh" "$vulkan/runtime/libc.prx" \
         "$image" "$ffmpeg/lib/libavcodec.a" "$ffmpeg/lib/libdav1d.a"; do
     [[ -e $file ]] || { echo "missing: $file" >&2; exit 2; }
@@ -87,7 +90,7 @@ mkdir -p "$app/sce_sys" "$app/sce_module"
 "$tool" self --inspect --file "$app/eboot.bin" > /dev/null
 cp "$param" "$app/sce_sys/param.json"
 for asset in icon0.png pic0.dds pic1.dds; do
-    [[ -f $root/ps5/sce_sys/$asset ]] && cp "$root/ps5/sce_sys/$asset" "$app/sce_sys/$asset"
+    [[ -f $sce_sys/$asset ]] && cp "$sce_sys/$asset" "$app/sce_sys/$asset"
 done
 (cd "$vulkan/runtime" && sha256sum --check --strict --quiet libc.prx.sha256)
 cp "$vulkan/runtime/libc.prx" "$app/sce_module/libc.prx"
