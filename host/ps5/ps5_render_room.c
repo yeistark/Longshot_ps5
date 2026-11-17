@@ -39,3 +39,15 @@ uint64_t hos_ps5_dead_margin(void) {
     }
     return (uint64_t)margin;
 }
+
+/* (PS5) RX_VK_PROBE=2 keeps the centre texel of the images each pass draws and writes them out only at a white or dark
+   frame (gpu/vk/vk_replay.cpp). HOS_PS5_PROBE_EVERY=<presents>: every so many presents too, the eight files it writes at
+   most, to read a picture that is wrong for good rather than for a frame (objects black in the shade, 2026-11-17). */
+void hos_ps5_probe_tick(int64_t presents, void (*dump)(const char *)) {
+    static int64_t every = -1;
+    if (every < 0) {
+        const char *e = getenv("HOS_PS5_PROBE_EVERY");
+        every = e ? atoll(e) : 0;
+    }
+    if (every > 0 && presents > 0 && presents % every == 0) dump("periodic (HOS_PS5_PROBE_EVERY)");
+}

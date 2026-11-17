@@ -6017,7 +6017,11 @@ void probe_dump_all(const char* why) {
     if (left <= 0) return;
     left--;
     char path[64];
+#ifdef __PROSPERO__
+    snprintf(path, sizeof path, "/app0/probe_all_%d.txt", n++);   // (the title's folder: the console's working folder is not it)
+#else
     snprintf(path, sizeof path, "probe_all_%d.txt", n++);
+#endif
     logf("vk: %s: %s, frame %llu", why, path, (unsigned long long)texture_frame_no());
     std::lock_guard lk(probe_mu);
     if (FILE* o = fopen(path, "w")) {

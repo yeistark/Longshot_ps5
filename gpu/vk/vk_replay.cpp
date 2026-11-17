@@ -60,6 +60,7 @@
 #include "hold_gpu.h"   // (longshot: sync_watch's rule for queues stopped past hold_ms)
 #ifdef __PROSPERO__
 #include "../../host/ps5/ps5_code_idle.h"   // (the console: the lowered code of programs not drawn for a while let go)
+extern "C" void hos_ps5_probe_tick(int64_t presents, void (*dump)(const char*));   // (host/ps5/ps5_render_room.c)
 #endif
 #include "vk_work.h"   // (after the others: counts the commands that do GPU work, for full_barrier)
 
@@ -5086,6 +5087,12 @@ void do_present(const nvn_tex* t, const int crop[4]) {
         full_barrier(r.cmd);
         presents++;
         presents_now = presents;
+#ifdef __PROSPERO__
+        {   // (host/ps5/ps5_render_room.c: HOS_PS5_PROBE_EVERY, RX_VK_PROBE=2's dump every so many presents)
+            void probe_dump_all(const char* why);
+            hos_ps5_probe_tick((int64_t)presents, probe_dump_all);
+        }
+#endif
         new_refuse_test(presents);
         wide_sides_tick();
         if (presents == 1) hang_watch_start(), gpu_hang_watch_start();
