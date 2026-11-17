@@ -4629,8 +4629,14 @@ bool bind_descriptors(VkCommandBuffer cmd, VkPipelineBindPoint bp, const Program
 
 // ---- RX_VK_CHECKPOINTS: a marker before each draw and dispatch (VK_NV_device_diagnostic_checkpoints); when the
 // device is lost, the markers the GPU reached say which program it was running ----
-struct Checkpoint { uint64_t prog; uint64_t frame; uint32_t seq; char kind; };
+struct Checkpoint {
+    uint64_t prog; uint64_t frame; uint32_t seq; char kind;
+    // (a draw's own size: a draw of a program whose draw before it finished hung the PS5's GPU, 2026-11-17, and the
+    // marker alone could not say whether that draw asked for billions of vertices)
+    int count = 0, instances = 0, max = 0; uint8_t flags = 0;   // (flags: 1 indexed, 2 indirect, 4 mesh, 8 fallback)
+};
 Checkpoint checkpoints[1 << 16];
+thread_local const DrawArgs* checkpoint_args = nullptr;   // (the draw push_constants is called for, if one)
 std::atomic<uint32_t> checkpoint_n{0};
 
 // (VK_AMD_buffer_marker, where the NV checkpoints are missing: marker i's sequence number goes to word 2i when the GPU
@@ -4658,6 +4664,10 @@ void checkpoint(VkCommandBuffer cmd, const Program& p, char kind) {
     if (!checkpoints_on()) return;
     const uint32_t seq = ++checkpoint_n, i = (seq - 1) & 0xFFFF;
     checkpoints[i] = {p.key, texture_frame_no(), seq, kind};
+    if (const DrawArgs* d = checkpoint_args) {
+        checkpoints[i].count = d->count, checkpoints[i].instances = d->instances, checkpoints[i].max = d->max;
+        checkpoints[i].flags = (uint8_t)((d->indexed ? 1 : 0) | (d->indirect ? 2 : 0) | (d->mesh ? 4 : 0) | (p.fallback ? 8 : 0));
+    }
     set_checkpoint(cmd, i, seq);
 }
 const char* checkpoint_kind(char c) {
@@ -4796,8 +4806,14 @@ void buffer_markers_report() {
     logf("vk: device lost: %u markers set, %u reached; the last whose earlier work all finished: %u", n, reached, last_done);
     const auto line = [](const char* what, uint32_t s) {
         const Checkpoint& k = checkpoints[(s - 1) & 0xFFFF];
-        logf("vk:   %s: marker %u (%s %016llx, frame %llu)", what, s, checkpoint_kind(k.kind), (unsigned long long)k.prog,
-             (unsigned long long)k.frame);
+        if (k.kind == 'd')
+            logf("vk:   %s: marker %u (%s %016llx, frame %llu: count %d, instances %d%s%s%s%s, max %d)", what, s,
+                 checkpoint_kind(k.kind), (unsigned long long)k.prog, (unsigned long long)k.frame, k.count, k.instances,
+                 k.flags & 1 ? ", indexed" : "", k.flags & 2 ? ", INDIRECT" : "", k.flags & 4 ? ", mesh" : "",
+                 k.flags & 8 ? ", fallback" : "", k.max);
+        else
+            logf("vk:   %s: marker %u (%s %016llx, frame %llu)", what, s, checkpoint_kind(k.kind), (unsigned long long)k.prog,
+                 (unsigned long long)k.frame);
     };
     for (uint32_t s = last_done > 6 ? last_done - 6 : 1; last_done && s < last_done; s++) line("finished before", s);
     // (from the last finished marker to the first reached one whose earlier work did not finish: what the GPU was running)
@@ -8078,7 +8094,9 @@ void draw(VkCommandBuffer cmd, NvnState& s, const DrawArgs& d) {
     }
     {
         FINE_SCOPE(FT_PUSHC);
+        checkpoint_args = &d;
         push_constants(cmd, p, &at);
+        checkpoint_args = nullptr;
     }
     if (watched(p.key)) {   // (RX_VK_WATCH_PROG: the draw's state, 80 lines)
         static std::atomic<int> n{0};
