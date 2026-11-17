@@ -32,7 +32,13 @@ void hos_ps5_startup(const char *title_name) {
      - HOS_MEMORY_MB: what the game is told it has (less than 9300 did not boot).
      - HOS_PS5_MEMINFO_RESERVE_MB: the game is told the console's free memory less this (host/hos_mem.c).
      - HOS_PS5_RENDER_MB, HOS_PS5_RESERVE_MB: the renderer's own limit, and what it leaves the game (gpu/vk/vk_vma.cpp).
-     - RX_VK_PRECOMPILE=0: programs are read when drawn, not held from the start.
+     - RX_VK_PREPARE_ONCE=1: a start whose shader list (longshot_shaders.bin) is not prepared for this translator prepares
+       all of it before the game, once (host/ps5/ps5_vk_prepare.inc).
+     - RX_VK_LOAD=create, RX_VK_PRECOMPILE=1: a program is read from the cache on a worker when the game makes it, not on the
+       replay thread at its first draw (the stutter: the console's disk). The first start after a preparation builds every
+       noted pipeline into the caches once; the mesh fallback programs are not read before the title (docs/PS5.md). Set
+       here, RX_VK_LOAD=create goes before upstream's longshot_load_start.txt.
+     - RX_VK_LOAD_WORKERS=4, RX_VK_LOAD_WORKERS_LOADING=6: with two, a zone change's loads queued and a draw waited 3.1 s.
      - RX_VK_COMPACT=0: the VRAM compaction off; GPU faults followed it on the console.
      - RX_VK_FORCE_MESH_FALLBACK=1: the task and mesh stages as compute; the console's RADV hangs on the native ones. */
 static const char *const defaults[][2] = {
@@ -40,7 +46,9 @@ static const char *const defaults[][2] = {
     {"RX_VK_ASTC_BC_MB", "0"}, {"RX_VK_FRAMEGEN_MULT", "2"}, {"RX_VK_PACE", "1"}, {"RX_VK_FSR_FG", "0"},
     {"RX_VK_NO_WARM", "1"}, {"RX_VK_DESC_POOL_DIV", "8"},
     {"HOS_MEMORY_MB", "9300"}, {"HOS_PS5_MEMINFO_RESERVE_MB", "800"}, {"HOS_PS5_RENDER_MB", "1500"},
-    {"HOS_PS5_RESERVE_MB", "3072"}, {"RX_VK_PRECOMPILE", "0"}, {"RX_VK_WB_DIFF", "0"},
+    {"HOS_PS5_RESERVE_MB", "3072"}, {"RX_VK_WB_DIFF", "0"},
+    {"RX_VK_PREPARE_ONCE", "1"}, {"RX_VK_LOAD", "create"}, {"RX_VK_PRECOMPILE", "1"},
+    {"RX_VK_LOAD_WORKERS", "4"}, {"RX_VK_LOAD_WORKERS_LOADING", "6"},
     {"RX_VK_IMPORT_CHUNK_MB", "1"}, {"RX_VK_IMPORT_SPAN_MB", "4"}, {"RX_VK_COMPACT", "0"},
     {"RX_VK_WORKERS", "1"}, {"RX_VK_FORCE_MESH_FALLBACK", "1"},
     /* (the renderer's image blocks at 16 MB, not 128: a block goes back to the console's pool only once empty, and the

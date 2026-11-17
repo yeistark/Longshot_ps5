@@ -82,7 +82,7 @@ without the GPU bits would make the GPU fault on the pool. So guest pages are ma
 ## Preparing every shader once (`RX_VK_PREPARE_ONCE`)
 
 In play the console translates each program and has the driver compile it when it is first drawn: stutter and slow
-loads. With `RX_VK_PREPARE_ONCE=1` in `longshot_env.txt` and the game's shader list beside the eboot
+loads. With `RX_VK_PREPARE_ONCE=1` (the console's default, `host/ps5/ps5_startup.c`; `=0` in `longshot_env.txt`: off) and the game's shader list beside the eboot
 (`longshot_shaders.bin`; PS5_Hookshot's `hookshot_shaders.bin` is the same file, renamed), a start whose shaders are not
 prepared for this translator prepares all of them before the game and then closes; the next start goes straight to the
 game. Longshot's start-up screen shows its progress on one bar, with the time left (`RX_VK_STARTUP_SCREEN=0`: none, and
@@ -107,7 +107,7 @@ console leaves those to the create calls' loads and their first draws (`gpu/vk/v
 after a preparation, with the bar). Over four minutes of zone changes with the sampler on: the stutter's program reads
 went from 393 ms to 56-84 ms. With the two load workers upstream gives play, a zone change queued hundreds of loads and a
 draw waited up to 3.1 s for its program, and the map flickered; `RX_VK_LOAD_WORKERS=4` and
-`RX_VK_LOAD_WORKERS_LOADING=6` took both away (the longest frame 282 ms). Upstream's safety net writes
+`RX_VK_LOAD_WORKERS_LOADING=6` took both away (the longest frame 282 ms). All four are the console's defaults. Upstream's safety net writes
 `longshot_load_start.txt` after sessions with long waits; `RX_VK_LOAD=create` set in the environment goes first.
 
 Our pipeline cache is not written by it. `RX_VK_PREPARE_ONCE_NO_DRIVER=1`: step 1's translation alone;
