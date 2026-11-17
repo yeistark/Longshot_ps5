@@ -298,8 +298,11 @@ static int commit_units_wait(uintptr_t lo, uintptr_t hi) {
    creation and let go, the lowered code let go once picked), not a larger segment. */
 #ifdef PS5_HEAP_FIRST_ARENA
 /* (1024 MiB with the shader modules kept compressed, host/ps5/ps5_vk_modules.cpp: what the segment holds and the heap does
-   not use is taken from the game's pages, and the console ran out whole with 650 MiB of it unused) */
-const size_t ps5_heap_first_arena_bytes = (size_t)1024 << 20;
+   not use is taken from the game's pages, and the console ran out whole with 650 MiB of it unused)
+   (1408 MiB, 2026-11-17, upstream's update with FSR 3.1 and frame interpolation on: the heap came to 1161 MiB in use, 1298
+   mapped in 914 segments, and a 7 MiB request of texture_view_of found no piece of its size (425 MiB free, the largest 6
+   MiB): std::bad_alloc, the title closed. Without them it held 830-850 MiB; 1408 covers the larger with room) */
+const size_t ps5_heap_first_arena_bytes = (size_t)1408 << 20;
 #endif
 
 int hos_ps5_unit_backed(uintptr_t addr);
