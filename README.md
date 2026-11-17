@@ -37,7 +37,14 @@ The PC version's own documentation (menus, controls, mods, how the recompilation
 
 ## Status
 
-Playable, on one tested PS5. These numbers come from the latest build:
+Playable. These numbers come from the latest build, on the one console it was developed and tested on:
+
+> [!NOTE]
+> **Tested on a launch PS5 only** (the original "fat" model, standard edition). It has not been tried on any other PS5
+> yet. The slim and the later fat models have the same CPU, GPU and memory, so they should behave the same, but nobody
+> has confirmed it. The **PS5 Pro** has a different GPU and memory layout: it may need other memory settings, or may not
+> work at all. Your firmware must be one your homebrew enabler supports. If you try it on another model or firmware,
+> please open an issue with the result and the first start's log.
 
 | | |
 | --- | --- |
@@ -55,7 +62,7 @@ limits the frame rate today.
 
 **On the console**
 
-- A PS5 that runs homebrew: a homebrew enabler that loads ELF payloads and installs fake-signed titles from
+- A PS5 (tested on a launch "fat" model only: see [Status](#status)) that runs homebrew: a homebrew enabler that loads ELF payloads and installs fake-signed titles from
   `/data/homebrew`. The title was tested with ShadowMount, which registers a folder copied there by itself.
 - An FTP server on the console to copy the title over (the examples use port 2121).
 - About 7.5 GB free in `/data` for the shader caches, plus ~1.2 GB for the title.
@@ -166,6 +173,13 @@ screen.
 
 The first time you visit an area, some objects can appear a moment late while their pipelines are made. The title notes
 them and builds them before the game at the next preparation.
+
+**Starting with someone else's pipeline lists (optional).** The lists of the pipelines a player has met
+(`cache/longshot_pipeline_states.bin`, `cache/longshot_computes.bin`, `cache/longshot_compute_variants.bin`) hold only
+hashes, formats and draw state, nothing of the game, so they can be shared. Copied into your title's `cache/` folder
+before the first start, they make the preparation build those pipelines too, and areas show complete from the first
+visit. `longshot_shaders.bin` is different: it holds the game's shader code, so make your own (see [Build](#build)) and
+never share it.
 
 ## Settings
 
