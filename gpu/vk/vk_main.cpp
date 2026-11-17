@@ -25,6 +25,13 @@
 #include "vk_new.h"
 #include "presenter_queue.h"
 static_assert(mkwvk::kQueueGraphics == VK_QUEUE_GRAPHICS_BIT && mkwvk::kQueueCompute == VK_QUEUE_COMPUTE_BIT);
+#ifdef __PROSPERO__
+// (host/ps5/ps5_vk_prepare.inc: RX_VK_PREPARE_ONCE, started_up; its parts on the start-up screen's bar, prepare_with_screen)
+extern "C" int hos_ps5_prepare_once_wanted(void);
+extern "C" int hos_ps5_prepare_once_run(void (*progress)(size_t done, size_t total), void (*stage)(int part));
+extern "C" void hos_ps5_prepare_once_end(void);
+static bool ps5_once_screen = false;
+#endif
 #include "gpu_choice.h"
 #include "vk_menu.h"
 #include "vk_bug_report.h"
@@ -1277,6 +1284,17 @@ void prepare_with_screen() {
     prep_ended = CreateEventA(nullptr, TRUE, FALSE, nullptr);
     prep_running.store(true);
     std::thread worker([] {
+#ifdef __PROSPERO__
+        if (ps5_once_screen) {   // (RX_VK_PREPARE_ONCE: host/ps5/ps5_vk_prepare.inc's parts, on this bar)
+            size_t guess[3];
+            prepare_guess(guess);
+            for (int k = 0; k < 3; k++) prep_guess[k].store(guess[k]);
+            hos_ps5_prepare_once_run(prep_progress, [](int stage) { prep_done.store(0), prep_total.store(0), prep_stage.store(stage); });
+            prep_finished.store(true, std::memory_order_release);
+            SetEvent(prep_ended);
+            return;
+        }
+#endif
         const bool update = prepare_is_update();   // (an update, RX_VK_PREPARE_BACKGROUND=1: what the notes name now, the rest in play)
         {
             size_t guess[3];
@@ -1398,6 +1416,15 @@ bool started_up() {
     if (const char* e = getenv("RX_VK_START_DELAY")) Sleep((DWORD)atoi(e) * 1000);   // (diagnosis: a long start, as the first one is)
     if (!replay_start()) return false;
     driver_cache_log("at the start");
+#ifdef __PROSPERO__
+    if (hos_ps5_prepare_once_wanted()) {   // (RX_VK_PREPARE_ONCE: the shaders not prepared for this translator, all of them)
+        ps5_once_screen = !dev.offscreen && screen_wanted();
+        if (ps5_once_screen) prepare_with_screen();
+        else hos_ps5_prepare_once_run(nullptr, nullptr);
+        ps5_once_screen = false;
+        hos_ps5_prepare_once_end();   // (it ends the process when it prepared)
+    }
+#endif
     if (prepare_only()) {
         // (three parts: the programs, the pipelines the notes predict, then those they name, on one bar whose total has all three
         // from the start: PrepareBar. The fixed shares it had (70%, 20%, 10%) kept the predicted pipelines' minutes in a fifth)

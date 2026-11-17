@@ -79,6 +79,35 @@ of guest space (the guest's heap from guest 16 GiB), all of it lands in host [64
 (`VK_EXT_external_memory_host`); RADV grants the GPU access with a protection change, and any later protection change
 without the GPU bits would make the GPU fault on the pool. So guest pages are mapped with the GPU bits from the start.
 
+## Preparing every shader once (`RX_VK_PREPARE_ONCE`)
+
+In play the console translates each program and has the driver compile it when it is first drawn: stutter and slow
+loads. With `RX_VK_PREPARE_ONCE=1` in `longshot_env.txt` and the game's shader list beside the eboot
+(`longshot_shaders.bin`; PS5_Hookshot's `hookshot_shaders.bin` is the same file, renamed), a start whose shaders are not
+prepared for this translator prepares all of them before the game and then closes; the next start goes straight to the
+game. Longshot's start-up screen shows its progress on one bar, with the time left (`RX_VK_STARTUP_SCREEN=0`: none, and
+the log says where it is every 10 s, `vk: prepare once:`).
+
+Longshot's `--prepare-shaders` does the same work but cannot be used on the console: a console start has no command line,
+and its last step keeps every noted pipeline alive, memory the console does not have. Here:
+
+1. every program is translated into `longshot_programs.bin`, with its compute pipelines, whatever `RX_VK_NO_WARM` says
+   (that is play's). The records go to disk 8 MB at a time (`host/ps5/ps5_program_hold.cpp`: one at a time into the
+   title folder cost 157 ms each), and the workers get the heap's eight arenas (PS5_PayloadSDK `ps5_heap_arenas`);
+2. the pipelines the notes predict are built for the driver's own disk cache;
+3. every noted pipeline, and the mesh fallback programs' compute pipelines, are built for the driver's cache and let go.
+
+What it does not do is take the stutter of a first draw away: play still reads each program from `longshot_programs.bin`
+(6.5 GB once all are prepared) when it is first drawn, and that read is the stutter (79 slow submits after the preparation,
+80 before, 2026-11-16). Longshot's way of reading them earlier, `RX_VK_LOAD=create`, does not fit the console: on a GPU
+without mesh shaders every mesh fallback program is read and kept before the title at each start (over 20 minutes there),
+and a session without that step ran out of memory at a zone change.
+
+Our pipeline cache is not written by it. `RX_VK_PREPARE_ONCE_NO_DRIVER=1`: step 1's translation alone;
+`RX_VK_PREPARE_ONCE_THREADS=<n>`: step 3's workers (all the CPUs but two, six at most); `RX_VK_PREPARE_ONCE_EXIT=0`: the
+game goes on in the same process. The code is `host/ps5/ps5_vk_prepare.inc`, included at the end of `gpu/vk/vk_draw.cpp`
+because it uses that file's own parts; `gpu/vk/vk_main.cpp` `started_up` calls it.
+
 ## Not carried from PS5_Hookshot yet
 
 PS5_Hookshot changed the renderer in many places that Longshot has since rewritten. Each of these is to be looked at
@@ -90,7 +119,6 @@ again against Longshot's code, and carried only if Longshot does not already ans
 - a program's SPIR-V kept compressed and its lowered code let go (Longshot reads a cached program's code at its first use);
 - the mesh fallback's buffer cap and trim (`RX_VK_MESH_FALLBACK_MB`, `RX_VK_MESH_FALLBACK_TRIM`);
 - the driver-fault handling for a console whose memory is in pieces;
-- preparing every shader once before play (`RX_VK_PREPARE_ONCE`); Longshot has `--prepare-shaders`;
 - the hang watch's and the skip report's diagnostics (Longshot has a GPU hang watch of its own);
 - frame generation by PS5_MihawkGen;
 - the one-command build (`build-title.sh`) and the Windows wrapper.

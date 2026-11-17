@@ -11198,6 +11198,10 @@ void pipeline_cache_save(bool force) {
     }
 }
 
+#ifdef __PROSPERO__
+#include "../../host/ps5/ps5_vk_prepare.inc"   // (the console's RX_VK_PREPARE_ONCE: every shader before the game, once)
+#endif
+
 } // namespace mkwvk
 
 namespace mkwvk {

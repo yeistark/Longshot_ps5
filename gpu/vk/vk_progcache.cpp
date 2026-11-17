@@ -398,6 +398,11 @@ void program_cache_save(const Program& p, const std::vector<std::vector<uint32_t
     const uint32_t kind = flags | (compressed_ok ? kCompressedKind : 0);
     const size_t head_size = disk_zstd ? kZstdHead : 16;
     const uint64_t head[2] = {p.key, stored};
+#ifdef __PROSPERO__
+    // (a console prepare-once's records: held and written 8 MB at a time, host/ps5/ps5_program_hold.cpp)
+    bool ps5_program_hold_save(uint64_t key, uint64_t stored, uint32_t kind, const std::vector<uint8_t>& payload, uint64_t usize);
+    if (ps5_program_hold_save(p.key, stored, kind, compressed_ok ? compressed : o, compressed_ok ? o.size() : 0)) return;
+#endif
     std::lock_guard lk(disk_mu);
     _fseeki64(disk_out, 0, SEEK_END);
     const int64_t at = _ftelli64(disk_out);
