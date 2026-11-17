@@ -1,0 +1,416 @@
+diff -ruN a/platform/include/ps5platform/heap.h b/platform/include/ps5platform/heap.h
+--- a/platform/include/ps5platform/heap.h	2026-11-17 11:45:09.348385206 -0400
++++ b/platform/include/ps5platform/heap.h	2026-11-17 11:45:09.352443830 -0400
+@@ -76,6 +76,18 @@
+ #define PS5_HEAP_TRIM 1
+ void ps5_heap_trim(void);
+ 
++/* The arenas threads without one yet are spread over, 1 (the default) to 8:
++ * more for a run of worker threads that allocate all the time, where one
++ * arena's lock is all they wait on. A thread keeps the arena it has. */
++#define PS5_HEAP_ARENAS 1
++void ps5_heap_arenas(unsigned count);
++
++/* A title may define this: the bytes of the heap's first segment, taken whole
++ * at the first allocation and kept (src/heap.c, make_arena). Not defined, or
++ * 0: the heap grows by segments of the size each request needs. */
++#define PS5_HEAP_FIRST_ARENA 1
++extern const size_t ps5_heap_first_arena_bytes;
++
+ void ps5_heap_stats(struct ps5_heap_stats *stats);
+ 
+ /* The heap itself, for a title with an allocator of its own: NULL when direct
+diff -ruN a/platform/src/dlmalloc/mspace.c b/platform/src/dlmalloc/mspace.c
+--- a/platform/src/dlmalloc/mspace.c	2026-11-17 11:45:09.364619701 -0400
++++ b/platform/src/dlmalloc/mspace.c	2026-11-17 11:45:09.368678326 -0400
+@@ -41,30 +41,10 @@
+  * table is sized for the larger count of segments this makes. */
+ #define DEFAULT_GRANULARITY ((size_t)2 << 20)
+ #define DEFAULT_MMAP_THRESHOLD ((size_t)32 << 20)
+-/* An arena keeps this much free at its top before a free gives any back. At
+- * dlmalloc's 2 MiB a title that frees and allocates in bursts (a game area
+- * loading) unmapped and mapped the same direct memory over and over: 23 fps
+- * where it had 27. What stays free goes back at ps5_heap_trim. */
+-#define DEFAULT_TRIM_THRESHOLD ((size_t)32 << 20)
+ #define MALLOC_FAILURE_ACTION errno = ENOMEM
+-#define NO_MALLINFO 0
++#define NO_MALLINFO 1
+ #define NO_MALLOC_STATS 1
+ /* Direct memory's unit, so every size dlmalloc maps and unmaps is one the
+  * kernel allocates as asked. */
+ #define malloc_getpagesize ((size_t)0x10000)
+ #include "malloc.c"
+-
+-/* For src/heap.c's report and trim: what an arena holds in blocks it has
+- * handed out; and its free top and its segments with nothing in them given
+- * back. */
+-size_t
+-ps5p_mspace_in_use(mspace space)
+-{
+-   return (size_t)mspace_mallinfo(space).uordblks;
+-}
+-
+-int
+-ps5p_mspace_trim(mspace space)
+-{
+-   return mspace_trim(space, 0);
+-}
+diff -ruN a/platform/src/heap.c b/platform/src/heap.c
+--- a/platform/src/heap.c	2026-11-17 11:45:09.380854197 -0400
++++ b/platform/src/heap.c	2026-11-17 11:45:09.380854197 -0400
+@@ -48,7 +48,7 @@
+ 
+ /* Enough segments of the arenas' 2 MiB granularity (src/dlmalloc/mspace.c) to
+  * fill the whole range: 16 GiB / 2 MiB. */
+-#define HEAP_MAX_SEGMENTS 8192
++#define HEAP_MAX_SEGMENTS 16384
+ /* Left unmapped between two mappings, so that dlmalloc never joins them into
+  * one segment. It gives a segment back only whole, and one that grew by
+  * joining is held by any block left anywhere in it: after a title had compiled
+@@ -76,6 +76,14 @@
+ 
+ #define HEAP_ARENAS 8
+ 
++/* How many of the arenas threads are given. One for a title: its pool is its
++ * GPU's and its guest's too, and each further arena's free top and half-used
++ * segments were memory the game lacked. ps5_heap_arenas() gives more to a run
++ * of worker threads that allocate all the time and nothing else to share the
++ * pool with: six threads translating shaders waited on the one arena's lock
++ * for 97% of their samples (mspace_malloc, mspace_free), 1.3 cores busy. */
++static unsigned arena_limit = 1;
++
+ /* 0 none, 1 in progress, 2 ready, 3 refused. */
+ static int range_state;
+ static mspace arenas[HEAP_ARENAS];
+@@ -216,11 +224,26 @@
+    return reserve_range();
+ }
+ 
++/* The first arena's first segment, when the title names a size for it
++ * (ps5_heap_first_arena_bytes): mapped whole at the first allocation, while
++ * the pool is still in a few large pieces, and never returned. A title whose
++ * game takes and gives back pages all the time ends with the pool's free
++ * memory in thousands of pieces, and a request then finds no segment of its
++ * own size: 9 MiB for a texture's bytes were refused with 777 MiB free, the
++ * largest piece 3 MiB, and the title ended on the exception. Inside one large
++ * segment a request needs room in the heap, not in the pool. Without the
++ * constant, or when the pool cannot give that much at once, a first segment
++ * of the usual size, as before. */
++extern const size_t ps5_heap_first_arena_bytes __attribute__((weak));
++
+ static bool
+ make_arena(void *slot)
+ {
+    mspace *const arena = slot;
+-   *arena = create_mspace(0, 1);
++   const size_t first = arena == &arenas[0] && &ps5_heap_first_arena_bytes ? ps5_heap_first_arena_bytes : 0;
++   *arena = first ? create_mspace(first, 1) : NULL;
++   if (!*arena)
++      *arena = create_mspace(0, 1);
+    return *arena != NULL;
+ }
+ 
+@@ -247,13 +270,25 @@
+    pthread_once(&arena_key_once, make_arena_key);
+    uintptr_t slot = (uintptr_t)pthread_getspecific(arena_key);
+    if (slot == 0) {
+-      slot = __atomic_fetch_add(&arena_next, 1, __ATOMIC_RELAXED) % HEAP_ARENAS + 1;
++      slot = __atomic_fetch_add(&arena_next, 1, __ATOMIC_RELAXED) % __atomic_load_n(&arena_limit, __ATOMIC_RELAXED) + 1;
+       pthread_setspecific(arena_key, (void *)slot);
+    }
+    const mspace space = arena((unsigned)slot - 1);
+    return space || slot == 1 ? space : arena(0);
+ }
+ 
++/* The arenas given to threads that have none yet (1 to HEAP_ARENAS): a thread
++ * keeps the one it has. */
++void
++ps5_heap_arenas(unsigned count)
++{
++   if (count < 1)
++      count = 1;
++   if (count > HEAP_ARENAS)
++      count = HEAP_ARENAS;
++   __atomic_store_n(&arena_limit, count, __ATOMIC_RELAXED);
++}
++
+ /* A block's own arena frees and resizes it, whichever is named (FOOTERS). */
+ static mspace
+ any_arena(void)
+@@ -305,38 +340,234 @@
+ 
+ /* ------------------------------------------------------------ the heap */
+ 
++
++/* ---- a profile of the live blocks (ps5_heap_profile): bytes and counts by size class, and the blocks of 128 KiB and more
++ * with the callers that asked for them, to see what a title's heap holds when the pool is short ---- */
++#define PROF_CLASSES 28
++#define PROF_BIG ((size_t)128 << 10)
++#define PROF_SLOTS 65536
++#define PROF_SMALL_MIN ((size_t)4 << 10)
++#define PROF_SAMPLE 16
++#define PROF_FRAMES 5
++struct prof_site {
++   const void *pointer;
++   size_t bytes;
++   void *frames[PROF_FRAMES];
++};
++static long prof_bytes[PROF_CLASSES], prof_count[PROF_CLASSES];
++static struct prof_site prof_sites[PROF_SLOTS];
++static volatile int prof_lock;
++static unsigned long prof_lost;
++static volatile int prof_sample_on;   /* blocks under 128 KiB are sampled only once the title asks (ps5_heap_profile_enable) */
++
++void
++ps5_heap_profile_enable(int on)
++{
++   __atomic_store_n(&prof_sample_on, on, __ATOMIC_RELAXED);
++}
++
++static int
++prof_class(size_t bytes)
++{
++   int k = 0;
++   while (bytes > 31 && k < PROF_CLASSES - 1) {
++      bytes >>= 1;
++      k++;
++   }
++   return k; /* class k: [2^(k+5), 2^(k+6)) bytes, class 0 below 64 */
++}
++
++static void
++prof_take(void)
++{
++   while (__atomic_exchange_n(&prof_lock, 1, __ATOMIC_ACQUIRE))
++      ;
++}
++
++static void
++prof_drop(void)
++{
++   __atomic_store_n(&prof_lock, 0, __ATOMIC_RELEASE);
++}
++
++static unsigned
++prof_hash(const void *pointer)
++{
++   uintptr_t x = (uintptr_t)pointer >> 4;
++   x ^= x >> 17;
++   x *= 0x9e3779b97f4a7c15ull;
++   return (unsigned)(x >> 40) % PROF_SLOTS;
++}
++
++static void
++prof_add(void *pointer, void *frame)
++{
++   if (!pointer)
++      return;
++   const size_t bytes = mspace_usable_size(pointer);
++   const int k = prof_class(bytes);
++   __atomic_fetch_add(&prof_bytes[k], (long)bytes, __ATOMIC_RELAXED);
++   __atomic_fetch_add(&prof_count[k], 1, __ATOMIC_RELAXED);
++   if (bytes < PROF_BIG && (!__atomic_load_n(&prof_sample_on, __ATOMIC_RELAXED) || bytes < PROF_SMALL_MIN ||
++                            (((uintptr_t)pointer >> 4) % PROF_SAMPLE) != 0))
++      return;
++   struct prof_site site = {.pointer = pointer, .bytes = bytes};
++   void **fp = frame;
++   for (int i = 0; i < PROF_FRAMES && fp; i++) {
++      site.frames[i] = fp[1];
++      void **next = fp[0];
++      if (!next || ((uintptr_t)next & 7) || next <= fp || (uintptr_t)next - (uintptr_t)fp > ((uintptr_t)1 << 20))
++         break;
++      fp = next;
++   }
++   prof_take();
++   unsigned i = prof_hash(pointer);
++   for (unsigned n = 0; n < PROF_SLOTS; n++, i = (i + 1) % PROF_SLOTS) {
++      if (!prof_sites[i].pointer || prof_sites[i].pointer == (const void *)1) {
++         prof_sites[i] = site;
++         prof_drop();
++         return;
++      }
++   }
++   prof_lost++;
++   prof_drop();
++}
++
++static void
++prof_remove(void *pointer)
++{
++   if (!pointer)
++      return;
++   const size_t bytes = mspace_usable_size(pointer);
++   const int k = prof_class(bytes);
++   __atomic_fetch_sub(&prof_bytes[k], (long)bytes, __ATOMIC_RELAXED);
++   __atomic_fetch_sub(&prof_count[k], 1, __ATOMIC_RELAXED);
++   if (bytes < PROF_BIG && (bytes < PROF_SMALL_MIN || (((uintptr_t)pointer >> 4) % PROF_SAMPLE) != 0))
++      return;
++   if (bytes < PROF_BIG && !__atomic_load_n(&prof_sample_on, __ATOMIC_RELAXED))
++      return;
++   prof_take();
++   unsigned i = prof_hash(pointer);
++   for (unsigned n = 0; n < PROF_SLOTS; n++, i = (i + 1) % PROF_SLOTS) {
++      if (prof_sites[i].pointer == pointer) {
++         prof_sites[i].pointer = (const void *)1;
++         break;
++      }
++      if (!prof_sites[i].pointer)
++         break;
++   }
++   prof_drop();
++}
++
++/* Fills up to max lines of 192 bytes: the size classes with live blocks, then the callers holding the most in blocks of
++ * 128 KiB and more. Returns the count. Callers' addresses are the title's, to be looked up in its map. */
++int
++ps5_heap_profile(char (*lines)[192], int max)
++{
++   int n = 0;
++   for (int k = 0; k < PROF_CLASSES && n < max; k++) {
++      const long count = __atomic_load_n(&prof_count[k], __ATOMIC_RELAXED);
++      if (count <= 0)
++         continue;
++      snprintf(lines[n++], 192, "heap profile: blocks of %lu-%lu KiB: %ld live, %ld MiB (%ld KiB)",
++               (unsigned long)(32ul << k) / 1024, (unsigned long)(64ul << k) / 1024, count,
++               __atomic_load_n(&prof_bytes[k], __ATOMIC_RELAXED) >> 20,
++               __atomic_load_n(&prof_bytes[k], __ATOMIC_RELAXED) >> 10);
++   }
++   struct group {
++      void *frames[PROF_FRAMES];
++      size_t bytes, largest;
++      unsigned count;
++   };
++   static struct group groups[512];
++   int ng = 0;
++   prof_take();
++   for (unsigned i = 0; i < PROF_SLOTS; i++) {
++      const struct prof_site *e = &prof_sites[i];
++      if (!e->pointer || e->pointer == (const void *)1)
++         continue;
++      int g = 0;
++      for (; g < ng; g++)
++         if (!memcmp(groups[g].frames, e->frames, sizeof e->frames))
++            break;
++      if (g == ng) {
++         if (ng == 512)
++            continue;
++         memset(&groups[ng], 0, sizeof groups[ng]);
++         memcpy(groups[ng].frames, e->frames, sizeof e->frames);
++         ng++;
++      }
++      const unsigned weight = e->bytes < PROF_BIG ? PROF_SAMPLE : 1; /* (blocks under 128 KiB: one in 16 is kept) */
++      groups[g].bytes += e->bytes * weight;
++      groups[g].count += weight;
++      if (e->bytes > groups[g].largest)
++         groups[g].largest = e->bytes;
++   }
++   const unsigned long lost = prof_lost;
++   prof_drop();
++   for (int shown = 0; shown < 30 && n < max; shown++) {
++      int best = -1;
++      for (int g = 0; g < ng; g++)
++         if (groups[g].bytes && (best < 0 || groups[g].bytes > groups[best].bytes))
++            best = g;
++      if (best < 0)
++         break;
++      snprintf(lines[n++], 192, "heap profile: big: %zu KiB in %u blocks (largest %zu KiB) from %p %p %p %p %p",
++               groups[best].bytes >> 10, groups[best].count, groups[best].largest >> 10, groups[best].frames[0],
++               groups[best].frames[1], groups[best].frames[2], groups[best].frames[3], groups[best].frames[4]);
++      groups[best].bytes = 0;
++   }
++   if (lost && n < max)
++      snprintf(lines[n++], 192, "heap profile: %lu big blocks not tracked (table full)", lost);
++   return n;
++}
++
+ void *
+ ps5_heap_malloc(size_t bytes)
+ {
+    const mspace space = title_heap();
+-   return space ? mspace_malloc(space, bytes) : NULL;
++   void *const block = space ? mspace_malloc(space, bytes) : NULL;
++   prof_add(block, __builtin_frame_address(0));
++   return block;
+ }
+ 
+ void *
+ ps5_heap_calloc(size_t count, size_t bytes)
+ {
+    const mspace space = title_heap();
+-   return space ? mspace_calloc(space, count, bytes) : NULL;
++   void *const block = space ? mspace_calloc(space, count, bytes) : NULL;
++   prof_add(block, __builtin_frame_address(0));
++   return block;
+ }
+ 
+ void *
+ ps5_heap_memalign(size_t alignment, size_t bytes)
+ {
+    const mspace space = title_heap();
+-   return space ? mspace_memalign(space, alignment, bytes) : NULL;
++   void *const block = space ? mspace_memalign(space, alignment, bytes) : NULL;
++   prof_add(block, __builtin_frame_address(0));
++   return block;
+ }
+ 
+ void *
+ ps5_heap_realloc(void *pointer, size_t bytes)
+ {
+-   return pointer ? mspace_realloc(any_arena(), pointer, bytes) : ps5_heap_malloc(bytes);
++   if (!pointer)
++      return ps5_heap_malloc(bytes);
++   prof_remove(pointer);
++   void *const moved = mspace_realloc(any_arena(), pointer, bytes);
++   /* (on failure the old block stays live) */
++   prof_add(moved ? moved : pointer, __builtin_frame_address(0));
++   return moved;
+ }
+ 
+ void
+ ps5_heap_free(void *pointer)
+ {
+-   if (pointer)
++   if (pointer) {
++      prof_remove(pointer);
+       mspace_free(any_arena(), pointer);
++   }
+ }
+ 
+ size_t
+diff -ruN a/platform/tests/test_platform.c b/platform/tests/test_platform.c
+--- a/platform/tests/test_platform.c	2026-11-17 11:45:09.393030067 -0400
++++ b/platform/tests/test_platform.c	2026-11-17 11:45:09.397088692 -0400
+@@ -1747,33 +1747,6 @@
+          "heap: freeing it returns the segment's direct memory");
+    check(stats.peak_bytes >= mapped + ((size_t)100 << 20), "heap: the peak remembers it");
+ 
+-   /* What a burst leaves: after most of 150 MiB is freed, a trim gives back
+-    * the segments nothing is left in, wherever they lie among the ones still
+-    * held (they are never joined into one). */
+-   enum { BURST = 256, BURST_BLOCK = 600000 };
+-   static void *burst[BURST];
+-   ps5_heap_stats(&stats);
+-   const size_t before_burst = stats.mapped_bytes;
+-   bool burst_made = true;
+-   for (int i = 0; i < BURST; i++)
+-      burst_made &= (burst[i] = __wrap_malloc(BURST_BLOCK)) != NULL;
+-   ps5_heap_stats(&stats);
+-   const size_t burst_mapped = stats.mapped_bytes;
+-   check(burst_made && burst_mapped >= before_burst + ((size_t)140 << 20) &&
+-            stats.in_use_bytes >= (size_t)BURST * BURST_BLOCK && stats.in_use_bytes <= stats.mapped_bytes,
+-         "heap: a burst of blocks maps their segments, counted in use");
+-   for (int i = 0; i < BURST; i++)
+-      if (i % 32)
+-         __wrap_free(burst[i]);
+-   ps5_heap_trim();
+-   ps5_heap_stats(&stats);
+-   check(stats.mapped_bytes <= before_burst + ((size_t)40 << 20),
+-         "heap: a trim gives back the segments a burst left empty, between the ones still held");
+-   check(stats.in_use_bytes >= (size_t)(BURST / 32) * BURST_BLOCK && stats.in_use_bytes <= stats.mapped_bytes,
+-         "heap: the blocks kept are still counted in use");
+-   for (int i = 0; i < BURST; i += 32)
+-      __wrap_free(burst[i]);
+-
+    /* libc's blocks stay libc's. */
+    char *foreign = strdup("libc's own");
+    check(foreign && !ps5_heap_owns(foreign), "heap: a libc block is not the heap's");

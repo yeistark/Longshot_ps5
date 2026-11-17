@@ -23,7 +23,8 @@ Longshot's code. The driver and the SDK are Mihawk's too and are not part of thi
 Upstream moves by hundreds of commits a week, and every line changed in a file of upstream's is a conflict waiting at
 the next update. So:
 
-- What is the console's goes in `host/ps5/`, `ps5/` and this file.
+- What is the console's goes in `host/ps5/`, `ps5/` and this file. `README.md` is the one upstream file replaced whole
+  (the console's instructions): at an update, keep ours.
 - A file of upstream's gets at most a call into `host/ps5/` behind `#ifdef __PROSPERO__`, never a block of logic.
 - What the console's C++ library lacks is supplied by `host/ps5/cxx_compat.h`, which `ps5/build.py` includes ahead of
   every unit of `gpu/vk`, so the renderer's sources stay as upstream writes them.
@@ -43,7 +44,8 @@ as PS5_Hookshot had them); moving that into `host/ps5/` is open work.
 | Install | `dist/PPSA99025` to `/data/homebrew/PPSA99025`; `romfs/` is read in place from your `.nup` on the console (`HOS_PS5_NUP`, else `/data/lichii/roms/oot/oot.nup`, else `/data/prosperoeden/roms/oot/oot.nup`) | FTP, `host/ps5/nup_romfs.c` |
 
 With PS5_Vulkan and the SDK built beside this repository (`PS5_VULKAN`, `PS5_PAYLOAD_SDK`), and FFmpeg, zstd and the
-Vulkan, SPIR-V and VMA headers in `.local/ps5-deps` (`ps5/tools/build-ffmpeg.sh`, `ps5/tools/build-zstd.sh`):
+Vulkan, SPIR-V and VMA headers in `.local/ps5-deps` (`ps5/tools/build-ffmpeg.sh`, `ps5/tools/build-zstd.sh`; the README
+has every step from a clean PC):
 
 ```sh
 python3 -I nx2/nup.py <your game.nup> --only exefs --extract work/game
@@ -104,7 +106,8 @@ earlier, `RX_VK_LOAD=create` with `RX_VK_PRECOMPILE=1`, does fit once one step i
 upstream reads every mesh fallback program before the title at each start (over 20 minutes on the console), and the
 console leaves those to the create calls' loads and their first draws (`gpu/vk/vk_draw.cpp` `precompile_at_create`;
 `RX_VK_AT_CREATE_FALLBACKS=1`: as upstream). Its first start builds every noted pipeline into the caches once (24 minutes
-after a preparation, with the bar). Over four minutes of zone changes with the sampler on: the stutter's program reads
+after a preparation, with the bar, on the heap's one arena; 150 s since its workers get eight, `precompile_warm`'s
+caller in `gpu/vk/vk_draw.cpp`: 13 workers on one arena kept 1.3-1.9 cores busy, 3,700 of 7,520 pipelines in 30 min). Over four minutes of zone changes with the sampler on: the stutter's program reads
 went from 393 ms to 56-84 ms. With the two load workers upstream gives play, a zone change queued hundreds of loads and a
 draw waited up to 3.1 s for its program, and the map flickered; `RX_VK_LOAD_WORKERS=4` and
 `RX_VK_LOAD_WORKERS_LOADING=6` took both away (the longest frame 282 ms). All four are the console's defaults. Upstream's safety net writes
@@ -127,8 +130,19 @@ again against Longshot's code, and carried only if Longshot does not already ans
 - the mesh fallback's buffer cap and trim (`RX_VK_MESH_FALLBACK_MB`, `RX_VK_MESH_FALLBACK_TRIM`);
 - the driver-fault handling for a console whose memory is in pieces;
 - the hang watch's and the skip report's diagnostics (Longshot has a GPU hang watch of its own);
-- frame generation by PS5_MihawkGen;
+- frame generation by PS5_MihawkGen (upstream's AMD frame interpolation runs on the console instead: `RX_VK_FRAMEGEN=1`;
+  since upstream keeps the textures the GPU drew that cannot be written back, it no longer shows rainbow flicker);
 - the one-command build (`build-title.sh`) and the Windows wrapper.
+
+## The SDK's heap patch
+
+`ps5/sdk/ps5-payload-sdk-heap.patch`, against PS5_PayloadSDK `55a2de0`, adds what the fork's heap does not have yet:
+`ps5_heap_arenas(n)` (the arenas new threads spread over: eight while shaders are prepared and pipelines warmed, one in
+play) and `ps5_heap_first_arena_bytes` (a first segment taken whole at the first allocation, while the pool is still in
+large pieces: 1408 MiB, `host/ps5/win32_ps5.c`). Without the latter, the heap's growth in play is served from the pool in
+pieces and a request of a few MiB finds none of its size: with FSR and frame interpolation the heap came to 1161 MiB in
+use and a 7 MiB request closed the title with 425 MiB free, the largest piece 6 MiB (2026-11-17). Both are weak symbols
+here: with the fork as it is the title builds, without them.
 
 ## Driver and SDK gaps (PS5_Vulkan, PS5_PayloadSDK)
 
@@ -142,3 +156,9 @@ again against Longshot's code, and carried only if Longshot does not already ans
 
 - Motion controls: the game sees a pad lying still (scePad's sensors are not read yet).
 - Microphone (humming the ocarina): none.
+- Memory in the heaviest areas: the pool ends in hundreds of pieces (136 MiB free, the largest 3 MiB, after 20 minutes
+  with FSR) and the driver's buffers reach 3.2 GB; the castle town and the Citadel can still close the title.
+- The replay: ~34 ms a frame in busy scenes (draw 21 ms, descriptors 6-8 ms) after upstream's update of 2026-11-17,
+  against ~28 ms before it; not yet sampled.
+- Files the title writes (uid 1, 0644: `language.txt`) cannot be replaced or deleted over the console's FTP; settings go
+  in `longshot_env.txt`, which the title only reads.

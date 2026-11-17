@@ -6,8 +6,9 @@
    however short the console is. At a zone change the textures reached 2.15 GB and the driver's buffers 3.5 GB, the console
    had 4 MB, and the game's next operator new found nothing in 3 s (klog_longshot_41, klog_longshot_35).
 
-   Below HOS_PS5_LOW_MB free in all (700), this answers the shortfall, and the renderer's budget falls that far under what
-   it has allocated: the oldest textures go before the game runs out. 0: off. */
+   Below HOS_PS5_LOW_MB free in all (1000), this answers the shortfall, and the renderer's budget falls that far under what
+   it has allocated: the oldest textures go before the game runs out. 0: off. (1000 since 2026-11-17: the sessions with FSR
+   and with frame interpolation ran on it without a close; 700 left frame interpolation 5 MB, 1600 evicted drawn textures) */
 #include <stdint.h>
 #include <stdlib.h>
 
@@ -17,7 +18,7 @@ uint64_t hos_ps5_render_short(void) {
     static int64_t low = -1;
     if (low < 0) {
         const char *e = getenv("HOS_PS5_LOW_MB");
-        low = (int64_t)(e ? atoi(e) : 700) << 20;
+        low = (int64_t)(e ? atoi(e) : 1000) << 20;
     }
     if (!low) return 0;
     const uint64_t room = hos_ps5_direct_room();
