@@ -1341,6 +1341,30 @@ def output_size_file(s, name):
     return s, found, []
 
 
+def touches(text):
+    """(nx2/guest_locals.py) Whether the edits here would change this text: one lifted function, written with its registers and
+    flags in the context, which is the text the patches find their places in and the context the host code they call
+    reads. Such a function is left that way by the lift; the rest get locals. Asked of every function as it is
+    written (about 40 microseconds each: a second of a lift), so no list of patched functions is kept by hand"""
+    text = '#include "a64.h"' + "\n" + text   # (as a file of its own: some edits want the line their declaration goes under)
+    return patch_file(text, "", True)[0] != text or output_size_file(text, "")[0] != text
+
+
+# (a function by its own head, a label, a hex address; not a function merely called: "f_80522050(c)" names the callee,
+# and the call's place is its return address, which is named too)
+_ADDRESS = re.compile(r"(?:void f_|L_|0x)(8[0-9a-fA-F]{7})(?![0-9a-fA-F])")
+
+
+def mentioned_addresses():
+    """(nx2/guest_locals.py) Every guest code address this file names: a function's head (void f_8...), a label (L_8...), a hex
+    address (a call's return address 0x8...ULL, the tables of sites, an entry given as a number). An edit here pins its place by such an address, so a function that
+    holds one is a function an edit may change, whatever else that edit wants to see before it acts (the line its
+    declaration goes under, its other functions): the lift leaves each such function as the edits expect it. An address
+    named for another reason costs one function its locals"""
+    with open(os.path.abspath(__file__[:-1] if __file__.endswith(".pyc") else __file__), encoding="utf-8") as f:
+        return {int(a, 16) for a in _ADDRESS.findall(f.read())}
+
+
 def check_output_size(found, required=False):
     """found: each place's count over all the files"""
     if found != [1] * len(OUT_EDITS):
