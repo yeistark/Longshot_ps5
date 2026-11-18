@@ -479,8 +479,10 @@ static uint64_t reported_used(void) {
         LOCK();
         mapped = mapped_bytes;
         UNLOCK();
+        /* (only once it has mapped pages: at boot the game sizes its heap from what it is told is free, and told 2048 MB
+           it wrote through a null pointer in _init_libc0, 2026-11-17) */
         const uint64_t cap = (uint64_t)pages_cap << 20, left = cap > mapped ? cap - mapped : 0;
-        if (free_now > left) free_now = left;
+        if (mapped && free_now > left) free_now = left;
     }
     static int64_t told_at;
     const int64_t now = hos_now_ns();
