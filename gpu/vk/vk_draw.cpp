@@ -2790,6 +2790,17 @@ VkPipeline build_graphics(const Program& p, const NvnState& s, const Targets& at
         if (r == VK_SUCCESS)
             logf("vk: graphics pipeline for %016llx recovered with optimization disabled", (unsigned long long)p.key);
     }
+#ifdef __PROSPERO__
+    // (the console: and once more without the pipeline cache. Seven programs that had built all day faulted in every run after
+    // one that ran out of memory, at 9 GB free too (klog_nuevo_25, 2026-11-17): what that run put into the cache, not the
+    // programs. A build that comes back this way is not saved into it)
+    if (r == kDriverFault && cache != VK_NULL_HANDLE) {
+        pl = VK_NULL_HANDLE;
+        r = graphics_with(VK_NULL_HANDLE, &ci, &pl);
+        logf("vk: graphics pipeline for %016llx built again without the pipeline cache: %s", (unsigned long long)p.key,
+             r == VK_SUCCESS ? "made" : r == kDriverFault ? "the driver faulted again" : "not made");
+    }
+#endif
     if (gated && fault_quarantine().end(p.key, r == kDriverFault)) {
 #ifdef __PROSPERO__
         // (the console: a fault with its memory all but gone is the compiler's allocation failing, not the program. Seven
