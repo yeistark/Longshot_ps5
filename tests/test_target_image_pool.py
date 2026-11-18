@@ -78,7 +78,7 @@ class TargetImagePoolTests(unittest.TestCase):
         self.assertIn("vkCmdClearDepthStencilImage", after)
 
     def test_a_gone_render_targets_views_go_to_the_pool_with_its_image(self):
-        later = block(self.tex, "void destroy_later(Texture& tex)")
+        later = block(self.tex, "void destroy_later(Texture& tex, uint64_t completed)")
         self.assertRegex(later, r"if \(tex\.pool_key && tex\.allocation && tex\.sparse_chunks\.empty\(\) && pool_cap\(\)\)")
         self.assertIn("d.view_map = std::move(tex.views)", later)
         self.assertIn("d.views.push_back(kv.second)", later)   # (the others' views destroyed, as before)

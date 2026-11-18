@@ -136,7 +136,7 @@ int main(int argc, char** argv) {
     flush_textures(batch);
     if (batch[0].ok) { std::printf("FAIL: the stub's precondition: the write-back's wait did not time out\n"); return 1; }
     const uint64_t gen = destroy_gen;
-    destroy_later(t);   // (the eviction, as texture_frame does after the write-backs)
+    destroy_later(t, completed);   // (the eviction, as texture_frame does after the write-backs)
     if (destroy_gen == gen || dead.empty()) {
         std::printf("FAIL: the stub's precondition: destroy_later did not retire the texture (no new destroy generation)\n");
         return 1;
@@ -189,7 +189,7 @@ def main():
                .replace("/* READBACK */", between(source, "// (a command buffer of its own for the read-backs", wait) + wait)
                .replace("/* FLUSH */", block(source, "struct Flush {") + ";")
                .replace("/* FLUSH_TEXTURES */", block(source, "void flush_textures(std::vector<Flush>& fs)"))
-               .replace("/* DESTROY_LATER */", block(source, "void destroy_later(Texture& tex)"))
+               .replace("/* DESTROY_LATER */", block(source, "void destroy_later(Texture& tex, uint64_t completed)"))
                .replace("/* DEAD_LOOP */", block(frame, "    for (auto it = dead.begin(); it != dead.end();)")))
     with tempfile.TemporaryDirectory(prefix="longshot-readback-source-") as temp:
         cpp, exe = Path(temp) / "fixture.cpp", Path(temp) / "fixture.exe"

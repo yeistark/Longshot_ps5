@@ -97,8 +97,8 @@ def wiring():
         need(frame.index("pool_trim();") < gate, "the pool is trimmed before the gate, every present")
     sweep = block(tex, "void dead_targets_sweep(uint64_t completed)")
     for part in ("dead_min_unused_presents()", "dead_targets::candidate(frame_no, tex->last_frame, need, tex->last_value, completed,",
-                 "tex->levels == 1 && tex->layers == 1 && tex->depth <= 1", "target_overlap::shifted_over(lo, hi, tex->last_frame,",
-                 "(*it)->last_written", "destroy_later(*tex);", "forget_gpu(tex);", "remade.erase(tex);", "textures.erase(it)"):
+                 "tex->levels == 1 && tex->layers == 1 && tex->depth <= 1", "target_overlap::ShiftedOver over{lo, hi, tex->last_frame};",
+                 "(*it)->last_written", "destroy_later(*tex, completed);", "forget_gpu(tex);", "remade.erase(tex);", "textures.erase(it)"):
         need(part in sweep, "the sweep: " + part)
     for part in ("flush_textures", "flush_texture(", "readback"):
         need(part not in sweep, "the sweep writes nothing back (%s)" % part)

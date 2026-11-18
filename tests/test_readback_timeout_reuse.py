@@ -151,7 +151,7 @@ static std::unordered_map<uint64_t, uint64_t> evicted_from_memory;
 static std::unordered_map<uint64_t, Evicted> evicted_at;
 static std::unordered_map<const Texture*, uint64_t> remade;
 static std::set<const Texture*> destroyed, written;
-static void destroy_later(Texture& t) { destroyed.insert(&t); }
+static void destroy_later(Texture& t, uint64_t) { destroyed.insert(&t); }
 static void forget_gpu(Texture*) {}
 static std::map<uint64_t, std::unique_ptr<Texture>> textures;
 
@@ -176,6 +176,7 @@ void evict_pass(std::vector<Texture*> flush, std::vector<Texture*> other) {
     for (Texture* t : flush) evict.push_back({t, true, false, false});
     for (Texture* t : other) evict.push_back({t, false, false, false});
     std::unordered_set<Texture*> gone;
+    const uint64_t completed = 0;   // (texture_frame's; the destroy_later stub ignores it)
 /* EVICT_TAIL */
 }
 }

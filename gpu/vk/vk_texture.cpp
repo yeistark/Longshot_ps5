@@ -2128,7 +2128,11 @@ bool texture_dirty(Texture& tex, uint32_t gen, Ranges& out) {
 
 uint64_t destroy_gen = 1;   // (bumped when textures go: what was resolved to them goes stale)
 
-void destroy_later(Texture& tex) {
+/// (`completed`: the newest submission the GPU has finished. A render target's image it is done with goes to the pool now, not
+/// at the next present: the next frame is recorded between the two, and its target of the same shape made a new image while
+/// this one waited, to be destroyed unused 120 presents later (first seen in Hookshot-old's 7bba12ad). One the GPU may still
+/// read, a timed-out write-back's source, waits in the dead list as before)
+void destroy_later(Texture& tex, uint64_t completed) {
     destroy_gen++;
     Dead d{tex.last_value, tex.image, tex.allocation, {}, {}};
     if (tex.pool_key && tex.allocation && tex.sparse_chunks.empty() && pool_cap()) {   // (a render target's: to the pool, its views too)
@@ -2139,7 +2143,13 @@ void destroy_later(Texture& tex) {
             if (kv.second) d.views.push_back(kv.second);
     }
     d.memory = tex.sparse_chunks;
-    dead.push_back(std::move(d));
+#ifdef __PROSPERO__
+    // (the console: the same margin past its last use as the dead list's below, host/ps5/ps5_render_room.c)
+    if (d.pool_key && d.value + hos_ps5_dead_margin() <= completed) pool_put(d);
+#else
+    if (d.pool_key && d.value <= completed) pool_put(d);
+#endif
+    else dead.push_back(std::move(d));
     for (const auto& attachment : tex.block_attachments)
         dead.push_back(Dead{tex.last_value, attachment.image, attachment.allocation, {}, {}});
     total_bytes -= std::min(total_bytes, tex.bytes + tex.pad);
@@ -4589,12 +4599,16 @@ void dead_targets_sweep(uint64_t completed) {
         const uint64_t lo = tex->gpu, hi = tex->gpu + tex->guest_size;
         auto it = std::lower_bound(by_start.begin(), by_start.end(), lo > longest ? lo - longest : 0,
                                    [](const Texture* t, uint64_t g) { return t->gpu < g; });
-        for (; it != by_start.end() && (*it)->gpu < hi; ++it)
-            if (*it != tex && target_overlap::shifted_over(lo, hi, tex->last_frame, (*it)->gpu, (*it)->gpu + (*it)->guest_size,
-                                                           (*it)->last_written)) {
+        // (their parts added up, as drawn_over_shifted's: several may each cover less than an eighth of it and together more)
+        target_overlap::ShiftedOver over{lo, hi, tex->last_frame};
+        for (; it != by_start.end() && (*it)->gpu < hi; ++it) {
+            if (*it == tex) continue;
+            over.add((*it)->gpu, (*it)->gpu + (*it)->guest_size, (*it)->last_written);
+            if (over.an_eighth()) {
                 gone.insert(tex);
                 break;
             }
+        }
     }
     if (gone.empty()) return;
     for (Texture* tex : gone) {   // (each one's end as the eviction's)
@@ -4606,7 +4620,7 @@ void dead_targets_sweep(uint64_t completed) {
             evicted_at[evicted_key(tex->gpu, tex->width, tex->height, tex->nvn_format)] = {frame_no, tex->gpu_written};
             remade.erase(tex);
         }
-        destroy_later(*tex);
+        destroy_later(*tex, completed);
         forget_gpu(tex);
     }
     for (auto it = textures.begin(); it != textures.end() && !gone.empty();) {
@@ -4632,7 +4646,7 @@ void reuse_retire_frame() {
             if (evicted_from_memory.size() > 50000) evicted_from_memory.clear();
             evicted_from_memory[evicted_key(t->gpu, t->width, t->height, t->nvn_format)] = t->guest_size;
         }
-        destroy_later(*t);
+        destroy_later(*t, completed_value);   // (the newest the GPU finished, as texture_frame last read it)
         forget_gpu(t);
         gone.insert(t);
     }
@@ -5231,8 +5245,9 @@ void texture_frame(uint64_t completed) {
             if (o->second != tex && o->second->last_written > tex->last_frame) return true;
         return false;
     };
-    // (longshot-amd) a render target of one level and layer whose storage another render target drew over from another start
-    // after its last use (target_overlap.h): the transient targets above. Its texels are gone from that memory on the console too
+    // (longshot-amd) a render target of one level and layer whose storage newer render targets drew over from another start
+    // after its last use (target_overlap.h): the transient targets above. Its texels are gone from that memory on the console
+    // too. Their parts are added up: several may each cover less than an eighth of it and together more
     const auto drawn_over_shifted = [&](const Texture* tex) {
         if (!dead_targets || !tex->gpu_written || !tex->first_render_frame || !tex->guest_size || tex->levels != 1 ||
             tex->layers != 1 || tex->depth > 1)
@@ -5240,10 +5255,12 @@ void texture_frame(uint64_t completed) {
         const uint64_t lo = tex->gpu, hi = tex->gpu + tex->guest_size;
         auto it = std::lower_bound(by_start.begin(), by_start.end(), lo > longest ? lo - longest : 0,
                                    [](const Texture* t, uint64_t g) { return t->gpu < g; });
-        for (; it != by_start.end() && (*it)->gpu < hi; ++it)
-            if (*it != tex && target_overlap::shifted_over(lo, hi, tex->last_frame, (*it)->gpu, (*it)->gpu + (*it)->guest_size,
-                                                           (*it)->last_written))
-                return true;
+        target_overlap::ShiftedOver over{lo, hi, tex->last_frame};
+        for (; it != by_start.end() && (*it)->gpu < hi; ++it) {
+            if (*it == tex) continue;
+            over.add((*it)->gpu, (*it)->gpu + (*it)->guest_size, (*it)->last_written);
+            if (over.an_eighth()) return true;
+        }
         return false;
     };
     // (the transient targets: a frame's own, not sampled again, their storage drawn over by another since. 16 frames left
@@ -5464,7 +5481,7 @@ void texture_frame(uint64_t completed) {
             evicted_at[evicted_key(tex->gpu, tex->width, tex->height, tex->nvn_format)] = {frame_no, tex->gpu_written};
             remade.erase(tex);
         }
-        destroy_later(*tex);
+        destroy_later(*tex, completed);
         forget_gpu(tex);
         gone.insert(tex);
     }
