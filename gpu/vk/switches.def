@@ -4,6 +4,7 @@
 // The kinds and the rules are in switches.h; tests/test_switch_table.py holds the table and the source to each other.
 // The rows were first written on 2026-11-16 from a reading of each switch's code: where a row and the code disagree, the
 // code is right and the row wants correcting.
+SW(HOS_OOT_BARRIER_WAIT, kill, bool, "on: three of OoT's parallel-for jobs (f_800998a0, f_800738e0, f_8007e200) wait until a mask word their barrier polls moves, woken by the thread that ORs it (at most 1 ms)", "=0: the game's job barriers sleep 20 us and look again, as before; HOS_AB may flip it.")
 SW(HOS_TEX_COMPACT_MS, tune, string, "1000: the game's texture manager asks for a compaction round of its texture heap at most once a second", "At least that many milliseconds between two rounds; 0: at every frame none runs, as the game has it; off: never.")
 SW(RX_NVN_TEXELS_LOG, diag, bool, "no logging", "Logs each WriteTexels/ReadTexels call with its data address, nonzero byte count and guest caller chain.")
 SW(RX_NVN_WATCH_AFTER, diag, int, "0 s: writes are reported from the start", "Reports watched WriteTexels-source writes only after that many seconds.")

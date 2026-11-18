@@ -31,6 +31,10 @@ Each is a runtime switch where it can be, so the game's own path stays reachable
   round moved is made again; hos_oot_tex_compact_due says whether it may ask now (HOS_TEX_COMPACT_MS: once a second as
   shipped, 0 at every frame, the game's own). The round itself is untouched.
 - Ocarina note controls: the note-wait action's start (f_828a9190) and tick (f_828a9280) report the wait to the host (hos_oc_wait, hos_oc_beat), which swaps the five notes for its own controls (host/nn_hid.c); a tick whose gates refuse reports no wait, so a dialogue keeps its buttons.
+- The game's job barriers waiting for their work (host/oot_barrier.h): three parallel-for jobs (f_800998a0, f_800738e0,
+  f_8007e200) sleep 20 us and look again while the masks they poll are not full; the sleep is hos_oot_barrier_wait, which
+  ends when a polled word moves, and each OR into such a word wakes the waiters (hos_oot_barrier_wake). On by default;
+  HOS_OOT_BARRIER_WAIT=0, the sleeps as lifted.
 """
 import collections
 import glob
@@ -709,6 +713,172 @@ def patch_bgm_flags(s):
     return s, 1
 
 
+# The game's job barriers waiting for their masks instead of sleeping 20 us (host/oot_barrier.h has the protocol and why;
+# HOS_OOT_BARRIER_WAIT, on by default). Three parallel-for jobs are run by several threads over one job block P: every pass
+# over the job's items takes an item by an atomic OR into a claim mask in P and, the item done, ORs it into a done mask; a
+# thread with nothing to take sleeps (SleepThread of the tick frequency / 50000: 20 us) and goes back to its loop, until the
+# masks it polls are full. With the switch on the sleep is hos_oot_barrier_wait(P, the polled words' offsets, the values
+# the loop's pass saw, the full mask), and each OR into a polled word is followed by hos_oot_barrier_wake(P) (P: the OR's
+# own address less the word's offset); off (=0), the sleep runs as lifted and the wakes do nothing. What was matched, read
+# from the lift of the supported build with every path followed back from each sleep:
+#   f_800998a0 (P in x24 at each sleep, reloaded from its frame slot x29-96 only; the full mask stored at x29-100 once):
+#     - sleep LR 0x8009a478, back to the outer loop's head 0x80099a00: polls the claim masks P+0x1f4 (after the yield at
+#       0x8009a420) and P+0x1fc (at 0x8009a6f0) against x22, both read after the passes: the hook reads them at the call;
+#     - sleep LR 0x8009b234, back to 0x8009a768: polls P+0x200 through its value at that loop's head (x25, or its copy at
+#       sp+104 put back after the pass), against x22;
+#     - sleep LR 0x8009aff0, back to 0x8009aa1c: polls P+0x208 through its value at that loop's head (x19, or its copy at
+#       sp+72), against the full mask read again from x29-100;
+#     - the ORs into P+0x1f4, P+0x1fc, P+0x200 (the pass that ends at the yield at 0x8009a420) and P+0x208 (the pass that
+#       ends at 0x8009aa00): the only writes of those words in the function.
+#   f_800738e0 (P in x19, the entry's x0: no other write of x19 reaches the sleep): sleep LR 0x800747ac, back to
+#     0x80073e38, polls P+0x210 and P+0x218 through their values at that loop's head (x25, x28) against the full mask at
+#     sp+16 (stored once); the ORs into them are in the two passes before the loop.
+#   f_8007e200 (P in x26, put back from x23 after each item): sleep LR 0x8007e90c, back to 0x8007e6c0, polls P+0x220
+#     through its value at that loop's head (x21) against ~x28 (x28: the inverted full mask, stored at sp+68 at entry); the
+#     OR into it is in the pass before the loop, which can reach the sleep without a yield: so the wakes are at the ORs.
+# A function is hooked only where every one of its places and marks is there once (another game version: left as it is,
+# and the report warns), and then at all its places: a sleep never waits for a wake that is not there. The three keep their
+# registers in the context (their addresses are named here: mentioned_addresses), so the text met is the lift's own.
+def _barrier_or(base, off, addr, value, between=""):
+    """(the lifted OR into P+off, its address made from register base into register addr; the same with the wake after it)"""
+    head = "    { uint64_t _a=c->x[%d], _b=%dULL; uint64_t _r=_a+_b; c->x[%d]=_r; }\n%s" % (base, off, addr, between)
+    rmw = ("{ uint64_t _a = c->x[%d]; uint32_t *_p = (uint32_t *)A64_PTR(_a); uint32_t _o = __atomic_fetch_or(_p, (uint32_t)c->x[%d], "
+           "__ATOMIC_SEQ_CST); A64_MARK(_a, 4); c->x[8] = (uint64_t)_o;" % (addr, value))
+    return (head + rmw + " }\n",
+            head + rmw + " if (hos_oot_barrier_on()) hos_oot_barrier_wake(_a - %dULL); }   /* (nx2/oot_patches.py: "
+                         "HOS_OOT_BARRIER_WAIT) */\n" % off)
+
+
+def _barrier_sleep(lr, then, wait):
+    """(the sleep at its return address and the lines after it; the same with the wait in front of it)"""
+    return ("c->x[30] = 0x%xULL; f_85106220(c);\n%s" % (lr, then),
+            "c->x[30] = 0x%xULL; if (!hos_oot_barrier_on() || !hos_oot_barrier_wait(%s)) f_85106220(c);"
+            "   /* (nx2/oot_patches.py: HOS_OOT_BARRIER_WAIT) */\n%s" % (lr, wait, then))
+
+
+BARRIER_SITES = (   # (the function's head, the marks its code must have, its places: (lifted text, the text in its place))
+    ("void f_800998a0(Ctx *__restrict A64_NOESC c) {\n",
+     ("    c->x[8]=recomp_load32(c,c->x[24] + 500);\n    recomp_barrier();\n"
+      "    { uint64_t _b=c->x[29]; int64_t _o=-100; c->x[22]=recomp_load32(c,(_b+_o)); }\n",
+      "L_8009a6f0:;\n    c->x[8]=recomp_load32(c,c->x[24] + 508);\n",
+      "L_8009a768:;\n    c->x[25]=recomp_load32(c,c->x[24] + 512);\n", "recomp_store32_sp(c,c->x[31] + 104,c->x[25]);",
+      "c->x[25]=recomp_load32(c,c->x[31] + 104);",
+      "L_8009aa1c:;\n    c->x[19]=recomp_load32(c,c->x[24] + 520);\n", "recomp_store32_sp(c,c->x[31] + 72,c->x[19]);",
+      "c->x[19]=recomp_load32(c,c->x[31] + 72);",
+      "c->x[30] = 0x8009afa4ULL; f_85106210(c);\n    { uint64_t _b=c->x[29]; int64_t _o=-100; c->x[8]=recomp_load32(c,(_b+_o)); }\n"),
+     (_barrier_sleep(0x8009a478, "{ A64_POLL(c); goto L_80099a00; }\n",
+                     "c->x[24], 500, (uint32_t)recomp_load32(c,c->x[24] + 500), 508, (uint32_t)recomp_load32(c,c->x[24] + 508), "
+                     "(uint32_t)c->x[22]"),
+      _barrier_sleep(0x8009b234, "    c->x[11] = 0x1ULL;\n    c->x[11] &= 0xFFFFFFFFULL;\n{ A64_POLL(c); goto L_8009a768; }\n",
+                     "c->x[24], 512, (uint32_t)c->x[25], 512, (uint32_t)c->x[25], (uint32_t)c->x[22]"),
+      _barrier_sleep(0x8009aff0, "{ A64_POLL(c); goto L_8009aa1c; }\n",
+                     "c->x[24], 520, (uint32_t)c->x[19], 520, (uint32_t)c->x[19], (uint32_t)recomp_load32(c,c->x[29] - 100)"),
+      _barrier_or(24, 500, 8, 23), _barrier_or(24, 508, 8, 23), _barrier_or(24, 512, 8, 23),
+      _barrier_or(24, 520, 8, 9, "    c->x[11] = 0x1ULL;\n    c->x[11] &= 0xFFFFFFFFULL;\n    c->x[9]=recomp_load32(c,c->x[31] + 112);\n"))),
+    ("void f_800738e0(Ctx *__restrict A64_NOESC c) {\n",
+     ("    { uint64_t _r = ((uint64_t)0 | ((c->x[0]) << 0)); c->x[19] = _r; }\n",
+      "L_80073e38:;\n    c->x[25]=recomp_load32(c,c->x[19] + 528);\n    recomp_barrier();\n    c->x[28]=recomp_load32(c,c->x[19] + 536);\n",
+      "recomp_store32_sp(c,c->x[31] + 16,c->x[8]);", "c->x[9]=recomp_load32(c,c->x[31] + 16);"),
+     (_barrier_sleep(0x800747ac, "{ A64_POLL(c); goto L_80073e38; }\n",
+                     "c->x[19], 528, (uint32_t)c->x[25], 536, (uint32_t)c->x[28], (uint32_t)recomp_load32(c,c->x[31] + 16)"),
+      _barrier_or(19, 528, 27, 26, "c->x[30] = 0x80073958ULL; f_80279140(c);\n    recomp_barrier();\n"),
+      _barrier_or(19, 536, 8, 9, "    { c->x[9]=(uint64_t)(uint32_t)((uint32_t)c->x[3]<<(c->x[21]&31)); }\n    recomp_barrier();\n"))),
+    ("void f_8007e200(Ctx *__restrict A64_NOESC c) {\n",
+     ("recomp_store32_sp(c,c->x[31] + 68,c->x[9]);",
+      "L_8007e6c0:;\n    c->x[21]=recomp_load32(c,c->x[26] + 544);\n",
+      "    c->x[28]=recomp_load32(c,c->x[31] + 68);\n",
+      "{ uint64_t _r = (c->x[21] ^ ((uint64_t)(uint32_t)(((uint32_t)(c->x[28])) << 0))); _r &= 0xFFFFFFFFULL; c->x[8] = _r; }"),
+     (_barrier_sleep(0x8007e90c, "{ A64_POLL(c); goto L_8007e6c0; }\n",
+                     "c->x[26], 544, (uint32_t)c->x[21], 544, (uint32_t)c->x[21], ~(uint32_t)c->x[28]"),
+      _barrier_or(26, 544, 8, 9, "    { c->x[9]=(uint64_t)(uint32_t)((uint32_t)c->x[23]<<(c->x[21]&31)); }\n    recomp_barrier();\n"))),
+)
+BARRIER_DECL = ("extern int hos_oot_barrier_on(void);\n"
+                "extern int hos_oot_barrier_wait(uint64_t p, uint32_t off1, uint32_t seen1, uint32_t off2, uint32_t seen2, "
+                "uint32_t full);\n"
+                "extern void hos_oot_barrier_wake(uint64_t p);\n")
+# (the texts above are the lift's own, as the patches meet them: before a64_lift.mark_groups, the lift's last step, and with
+# the loops' polls in. Two other forms of a text are let through, each kept as it was found:
+#   - a group's shared page mark (a64_lift.MG_MARK) on a line of its own after any line end inside it. mark_groups puts one
+#     before a line that ends a run of stores, as the atomic OR, a call or recomp_barrier() do, so a run of the patches by
+#     hand over a finished lift (python -I nx2/oot_patches.py) can find one there;
+#   - a loop's back-edge `goto L_x;` without its `{ A64_POLL(c); ... }`: nx2/poll.py adds the polls around the function's
+#     emit, after nx2/guest_locals.py has asked touches() about its text)
+_BARRIER_MARKS = r"((?:    A64_MARK\(\(c->x\[\d+\] \+ \(uint64_t\)\(int64_t\)\(-?\d+\)\), \d+\);\n)*)"
+_BARRIER_POLLED = re.compile(r"\{ A64_POLL\(c\); (goto L_[0-9a-f]{8};) \}")
+
+
+class _BarrierText:
+    """A text of BARRIER_SITES as a pattern: its fixed pieces with a slot between two of them after each line end inside it
+    (group marks) and at each polled back-edge (the goto with or without its poll)"""
+
+    def __init__(self, text):
+        self.pieces, self.slots = [""], []
+        parts = _BARRIER_POLLED.split(text)   # (each polled goto at an odd index)
+        for k, part in enumerate(parts):
+            if k % 2:
+                goto = re.escape(part)
+                self.slots.append(r"(\{ A64_POLL\(c\); %s \}|%s)" % (goto, goto))
+                self.pieces.append("")
+                continue
+            lines = part.split("\n")
+            for i, line in enumerate(lines):
+                if i:
+                    self.pieces[-1] += "\n"
+                    if line or i < len(lines) - 1 or k < len(parts) - 1:   # (none after the text's own last line end)
+                        self.slots.append(_BARRIER_MARKS)
+                        self.pieces.append("")
+                self.pieces[-1] += line
+        self.re = re.compile("".join(re.escape(p) + s for p, s in zip(self.pieces, self.slots + [""])))
+
+    def count(self, body):
+        return sum(1 for _ in self.re.finditer(body))
+
+    def put(self, body, old):
+        """body with the first place old finds made this text, what old's slots found kept in this text's slots (body as it
+        is where old finds none, as str.replace)"""
+        m = old.re.search(body)
+        if m is None:
+            return body
+        return body[:m.start()] + "".join(p + f for p, f in zip(self.pieces, m.groups() + ("",))) + body[m.end():]
+
+
+def _barrier_forms():
+    forms = []
+    for head_text, marks, places in BARRIER_SITES:
+        made = [(_BarrierText(old), _BarrierText(new)) for old, new in places]
+        if any(old.slots != new.slots for old, new in made):   # (a place and its text in its place, slot for slot)
+            raise ValueError("oot_patches: a barrier place and its hooked text differ in their lines or loops")
+        forms.append((head_text, [_BarrierText(m) for m in marks], made))
+    return tuple(forms)
+
+
+BARRIER_FORMS = _barrier_forms()
+
+
+def patch_barrier_wait(s):
+    """The job barriers' sleeps and ORs through the host: (s, how many of BARRIER_SITES' functions are in s with all their
+    places hooked, made now or before). A function whose code differs (another game version) is left as it is"""
+    done = 0
+    for head_text, marks, places in BARRIER_FORMS:
+        at = _function(s, head_text)
+        if at is None:
+            continue
+        head, end = at
+        body = s[head:end]
+        if all(new.count(body) == 1 and not old.count(body) for old, new in places):
+            done += 1
+            continue
+        if not all(m.count(body) == 1 for m in marks) or not all(old.count(body) == 1 for old, _ in places):
+            continue
+        for old, new in places:
+            body = new.put(body, old)
+        s = s[:head] + body + s[end:]
+        done += 1
+    if done and BARRIER_DECL not in s:
+        s = s.replace('#include "a64.h"\n', '#include "a64.h"\n' + BARRIER_DECL, 1)
+    return s, done
+
+
 def patch_solver_steps(s):
     """The solver step count's two places: (s, how many of them are in s with the hook, made now or before)"""
     done = 0
@@ -1159,6 +1329,11 @@ def patch_file(s, name, protect_hearts=False):
     if flags != out:
         lines.append("oot_patches: the music manager's change flags kept above 60 fps in " + name)
     out = flags
+    barrier, found = patch_barrier_wait(out)
+    counts["job barrier waits"] += found
+    if barrier != out:
+        lines.append("oot_patches: the job barriers' sleeps and mask ORs through the host in " + name)
+    out = barrier
     solver, found = patch_solver_steps(out)
     counts["solver sites"] += found
     if solver != out:
@@ -1215,6 +1390,9 @@ def report(paths, counts, protect_hearts=False):
         print("oot_patches: WARNING: the texture heap's compaction request was found %d times, not once" % total["texture compaction"])
     if total["music manager flags"] != 1:   # (without it, above 60 fps the battle music can play on after a fight)
         print("oot_patches: WARNING: the music manager's change flags were found %d times, not once" % total["music manager flags"])
+    if total["job barrier waits"] != len(BARRIER_SITES):   # (without them the job barriers sleep 20 us there, as before)
+        print("oot_patches: WARNING: the job barriers were found in %d of %d functions"
+              % (total["job barrier waits"], len(BARRIER_SITES)))
     if total["solver sites"] != len(SOLVER_HEADS):   # (without them, above 60 fps moving platforms can drop Link)
         print("oot_patches: WARNING: the solver step count was found at %d of %d places" % (total["solver sites"], len(SOLVER_HEADS)))
     for what, n in done.items():
