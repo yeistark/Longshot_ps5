@@ -2806,9 +2806,11 @@ VkPipeline build_graphics(const Program& p, const NvnState& s, const Targets& at
         // (the console: a fault with its memory all but gone is the compiler's allocation failing, not the program. Seven
         // programs went into the file that way at 4 MiB free ("no memory for a window buffer"), and every later run, whatever
         // its memory, left them out: the Haunted Wasteland's sandstorm drawn as a flat green and yellow (2026-11-17). Left
-        // out for this run only)
+        // out for this run only. A floor of 256 MiB free was not enough: eight more went in at 431 MiB free in 3362 pieces,
+        // the largest 1 MiB, and seven at the start of a run with 9 GB free, after the out-of-memory one (a pipeline cache
+        // written then). No fault on the console has yet been the program's own: none is noted there)
         const uint64_t room = hos_ps5_direct_room();
-        if (room < (256ull << 20)) {
+        if (true) {
             logf("vk: the driver faulted building a pipeline of %016llx with %llu MiB of memory free: left out for this run, "
                  "not noted", (unsigned long long)p.key, (unsigned long long)(room >> 20));
         } else
