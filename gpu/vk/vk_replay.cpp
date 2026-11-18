@@ -65,6 +65,9 @@ extern "C" void hos_ps5_probe_tick(int64_t presents, void (*dump)(const char*));
 #include "vk_work.h"   // (after the others: counts the commands that do GPU work, for full_barrier)
 
 namespace mkwvk {
+#ifdef __PROSPERO__
+void probe_dump_all(const char* why);   // (vk_draw.cpp: HOS_PS5_PROBE_EVERY's dump, at the present below)
+#endif
 extern std::atomic<bool> movie_networks_slow;   // (vk_draw.cpp: the movie networks left out, issue 109)
 int64_t presents_now;   // (the presents so far, for SlowWatch)
 void hang_watch_start();   // (EvilOOT, vk_hangdump.cpp: RX_VK_HANG_DUMP)
@@ -5089,7 +5092,6 @@ void do_present(const nvn_tex* t, const int crop[4]) {
         presents_now = presents;
 #ifdef __PROSPERO__
         {   // (host/ps5/ps5_render_room.c: HOS_PS5_PROBE_EVERY, RX_VK_PROBE=2's dump every so many presents)
-            void probe_dump_all(const char* why);
             hos_ps5_probe_tick((int64_t)presents, probe_dump_all);
         }
 #endif
