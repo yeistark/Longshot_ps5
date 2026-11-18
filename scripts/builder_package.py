@@ -9,7 +9,8 @@ data is involved. Python's standard library only.
             [--third-party-objects <folder>]
         the builder's folder, LongshotBuilder\\ in the zip: the published builder, the setup (a game folder's longshot.exe:
         make_game.py copies it there), LICENSE,
-        the tracked gpu, host, nx2, scripts and third_party under tools\\, and the pipeline state list's sources
+        the tracked gpu, host, nx2, scripts and third_party under tools\\, the play profiles (assets/profiles/: the hot list
+        and the renderer's profile, which make_game.py builds with), and the pipeline state list's sources
         (assets/pipeline_states/, which must be there and read). None of tools.lock's tools: the setup or the launcher adds
         those on the player's PC. --third-party-objects: the third-party code's objects (nx2/third_party_objects.py make, with
         llvm-mingw and tools.lock's cpm), as tools\\third_party_objects, which a player's build links instead
@@ -90,7 +91,9 @@ def package(a):
     copy(a.setup, os.path.join(out, "LongshotBuilder-Setup.exe"))   # (a game folder's longshot.exe: make_game.py copies it there)
     copy(os.path.join(ROOT, "LICENSE"), os.path.join(out, "LICENSE"))
     tools = os.path.join(out, "tools")
-    for f in tracked("gpu", "host", "nx2", "scripts", "third_party"):
+    # (assets/profiles/: the hot list and the renderer's play profile, which nx2/make_game.py looks for under tools/ as it does in
+    # a checkout. Without them a Windows player's build compiled every lifted function at -O1 and the renderer without its profile)
+    for f in tracked("gpu", "host", "nx2", "scripts", "third_party", "assets/profiles"):
         copy(os.path.join(ROOT, f), os.path.join(tools, *f.split("/")))
     if state_list(tools) != 0:
         return 1

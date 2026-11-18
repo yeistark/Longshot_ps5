@@ -112,6 +112,8 @@ class PlayerBuildFromTheAppImage(unittest.TestCase):
         # the image)
         self.assertTrue((self.tools / "gpu/vk/vk_main.cpp").is_file())
         self.assertTrue((self.tools / "assets/profiles").is_dir())
+        # (and the hot list, whose functions every player's build compiles at -O2: nx2/make_game.py hot_list_for)
+        self.assertTrue((self.tools / "assets/profiles/hot_funcs.txt").is_file())
 
 
 class TheChecksAreWired(unittest.TestCase):

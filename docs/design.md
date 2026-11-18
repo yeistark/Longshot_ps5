@@ -269,7 +269,8 @@ dump, the runtime made game-neutral, the stage-1 tools checked on MKW's dump as 
 ## 11. Findings, 2026-11-06, day
 
 - Builds: `nx2/split_hot.py` puts code_hot.c in eight files that compile side by side, 79 minutes to about 6
-  (a release ships no hot list, so a player's build has no hot pieces: every lifted file is built at `-O1`). `RX_PGO=gen` counts branches
+  (a release shipped no hot list, so a player's build had no hot pieces: every lifted file was built at `-O1`; since the list was
+  committed, `assets/profiles/hot_funcs.txt`, every build has them). `RX_PGO=gen` counts branches
   (host/pgo_rt.c writes LLVM raw format 11, the toolchain has no compiler-rt profile library), `HOS_PGO=<path>` with `<path>.reset` and
   `<path>.dump` files drives a run, `nx2/pgo_pieces.py` fits the merged profile to the pieces, `RX_PGO=<file>` uses it. `RX_VK_ONLY=1`: the renderer alone.
   (2026-11-14, after ProjectReLink) The renderer module the same way, apart from the game's: `RX_VK_PGO=gen` counts in the back end's own

@@ -769,6 +769,10 @@ A build reads and writes tens of gigabytes. When the game folder or the build fi
 | `RX_PGO=gen` or `RX_PGO=<file>` | The hot code counting its branches for a profile, or built with one (`make_game.py` passes the shipped profile) |
 | `RX_VK_PGO=gen` or `RX_VK_PGO=<file>` | The Vulkan back end's own files counting their branches for a profile, or built with one (`make_game.py` passes `work/longshot_vk.profdata` when it is there, else the committed `assets/profiles/longshot_vk.profdata.xz`; a compiler that can't read it builds without): [the renderer's play profile](#the-renderers-play-profile) |
 | `RX_HOT_OPT=<level>` | The hot pieces' optimisation level (default `O2`); `O1` for [a faster build for development](#a-faster-build-for-development) |
+| `LONGSHOT_HOT_LIST=0` | Builds with no [hot list](#the-hot-list): every lifted function at `-O1`, as every player's build was before the list was committed (an A/B against it, or a shorter build: 25 s on 12 cores in an incremental pair, more from scratch and on fewer cores). Unset: the checkout's `work/hot_funcs.txt`, else a list `A64_HOT_FUNCS` names in the shell, else the committed `assets/profiles/hot_funcs.txt`. The lift key holds the choice, so switching it translates the game again |
+| `LONGSHOT_CHUNK_OPT=all` or `=<file>` | Compiles the lifted chunks at `-O2` instead of `-O1`: `all`, or a file naming them (a `code_*.c` a line, or an `f_` name a line for the chunks that define it). A compile-only choice like `RX_HOT_OPT`: the lift's C is unchanged, the object keys name the flags, and a `-O2` object is never taken for a `-O1` one. The hot pieces keep `RX_HOT_OPT`. The cut below brings an all-`O2` build from 23:06 to 4:37 here; [an all-O2 build](#an-all-o2-build) has what it measured |
+| `LONGSHOT_CHUNK_PART_MB=<MB>` | With `LONGSHOT_CHUNK_OPT`: the size of the parts a chunk sent to `-O2` is cut into (default 6), each compiled as its own object beside the build's others. `-O2`'s passes cost more than linearly in a function's size, so the parts compile sooner than the whole chunk and side by side; the lifted C is not changed. `0` compiles the whole chunks, as before |
+| `LONGSHOT_CHUNK_LEVEL=<level>` | With `LONGSHOT_CHUNK_OPT`: the optimisation level its chunks compile at (default `O2`; `O1`, `O2` or `O3`). The level is in the object key, so a `-O3` object is never taken for a `-O2` one |
 | `LONGSHOT_SPLIT_GIANTS=<KB>` | Compiles each lifted function of 256 KB of C or more as pieces of about `<KB>` (8 is the measured best) cut at its labels, with a dispatch loop under its own name (`nx2/split_giants.py`). Measured on a Ryzen 5 5600, 16 GB: the 15 giant-function chunks compile 2.6x faster one at a time (their largest compile's peak memory 2,263 -> 586 MB; a single 2-6 MB function's peak falls to about a fifth), and a whole first build's compile (`--jobs 4`) takes ~21% less time, with ~6% less summed compiler memory. The lifted files are not changed (`build.py` compiles a copy). The hot pieces (`code_hot*.c`, built at `-O2`) are split too: a hot function of 256 KB or more, like the 4.79 MB `f_81b8c000`, is no longer one translation unit (on a Ryzen 9 9950X3D a 47-function hot-list build from scratch went 8 min 26 s -> 3 min 19 s, its compile 446 s -> 137 s; the giant alone 438 s -> 56 s). On by default at 8; `0` turns it off |
 | `LONGSHOT_LIGHT_PASSES=0` | Turns off the light passes (on by default): lifted chunks whose functions are all under `LONGSHOT_LIGHT_PASSES_KB` (1024) KB of C compile at `-O1` without its module passes (the inliner, ipsccp, globalopt, function-attrs ...; `-mllvm -opt-disable`). Those chunks compile about a fifth faster for ~3% more code (Ryzen 5 5600, `--jobs 4`). 56 of the game's 75 chunks are light (-21% on them, ~15% of a first build's compile), their `LONGSHOT_SPLIT_GIANTS` pieces too; the giant functions' chunks and the hot pieces keep every pass. It needs LLVM 22 or newer (`-opt-disable`): with an older clang (a Linux system's) the build says so and keeps every pass |
 | `RX_MARCH=<level>` | The CPU level to build for. Default: `native` (this PC's own CPU) on a CPU with `x86-64-v3`'s features, else `x86-64-v2`, else `x86-64`; `x86-64-v3` if clang can't say what `native` is here. With `native` the CPU clang finds goes into the object keys (`-DLONGSHOT_NATIVE_CPU=`, in the build log), so another CPU compiles again ([issue 182](https://git.magicbean.dev/MagicBeanDev/Longshot/issues/182)). `RX_MARCH=x86-64-v3` builds as before. `native` also tunes for this CPU (the Steam Deck's Zen 2 too), so there is no tuning switch. The third-party code is built for `x86-64-v3` on every CPU that has it, not `native`, so the objects a release ships fit (`LONGSHOT_THIRD_PARTY_OBJECTS`); with an `RX_MARCH`, or below v3, it is built as the rest |
@@ -807,6 +811,33 @@ even for directories with an owner marker, and never opens a leftover's owner fi
 Removal is best effort: a locked, in-use or otherwise unremovable directory is kept with a message, without failing
 the build.
 
+#### The hot list
+
+Every lifted function is compiled at `-O1` but those of the hot list, the few hundred the game spends most of its time
+in: the lift puts them in `code_hot.c` (their float helpers inline), `nx2/split_hot.py` cuts it into eight hot pieces, and
+`nx2/build.py` compiles those at `-O2` (`RX_HOT_OPT`), their hot callees inlined. Every build has one since it was
+committed: `assets/profiles/hot_funcs.txt` (680 functions; where and how it was recorded: `assets/profiles/README.md`),
+which `make_game.py` (`hot_list_for`) gives the lift as `A64_HOT_FUNCS`, copied to `<work>/hot_funcs.txt` (read where it
+is when `--work` is the checkout's own `work/`); the AppImage and the Windows builder carry it. A developer's own list goes
+first: the checkout's `work/hot_funcs.txt`, else one named by `A64_HOT_FUNCS` in the shell. `LONGSHOT_HOT_LIST=0` builds
+with none. The build log says which (`the hot list: ...`), and the lift how many of its names it found (`hot functions
+(A64_HOT_FUNCS): 680 of 680 listed found, in code_hot.c`).
+
+What it buys, measured on a Ryzen 9 5900X (12 cores) with an RTX 3090, one run a build along the same route (issue
+505): Death Mountain Trail 45.3 fps without it, 56.4 with it (+25 %; the game's time a frame 20.8 -> 16.7 ms), Kakariko
+51.3 -> 55.7 fps (+9 %; 18.2 -> 16.2 ms). Where the renderer sets the frame it does less: on #505 an earlier list gave
++3 % walking in the Market and nothing measurable standing there. What it costs: the eight pieces at `-O2`, 6:17 -> 6:42
+for the whole build on that PC (+25 s in an incremental pair; about +55 s from scratch, estimated), more on fewer cores
+(the pieces take about a fifth more of the lifted compile's CPU time than the same functions at `-O1`), and the pieces'
+compilers' memory beside the others'. Building every lifted chunk at `-O2` instead ([an all-O2 build](#an-all-o2-build))
+gave a few percent more on that route (58.5 fps on the trail) for 9:41.
+
+To make a list: `scripts/hotlist.py` over all-thread samples (`HOS_SAMPLE_ALL`, or `HOS_PROFILE=1`'s `all.txt`) of a
+build with no list. It names guest addresses, so it changes mostly with the game's version; the lift's line above shows
+when its names stop being found. The pieces' play profile (`RX_PGO`, `work/longshot_pieces.prof`) changes with the list,
+and none is committed: the pieces build without one unless the work folder has one (a profile left there from another
+list still applies to this list's pieces, fitting fewer of them).
+
 #### A faster build for development
 
 The eight hot pieces (`code_hot_*.c`, the functions the game spends its time in) are built at `-O2` with the play
@@ -820,8 +851,10 @@ build them as every other lifted file is built, at `-O1` and without the profile
 RX_HOT_OPT=O1 python -I nx2/build.py --standalone --jobs 8
 ```
 
-`build.py` run on its own uses no profile unless `RX_PGO` is set. `make_game.py` always passes the shipped profile
-(`work/longshot_pieces.prof`), so `RX_HOT_OPT=O1` through `make_game.py` gives `-O1` with the profile, which saves less.
+`build.py` run on its own uses no profile unless `RX_PGO` is set. `make_game.py` passes the pieces' profile
+(`work/longshot_pieces.prof`) when the work folder has one, so `RX_HOT_OPT=O1` through `make_game.py` then gives `-O1`
+with the profile, which saves less. `LONGSHOT_HOT_LIST=0` through `make_game.py` builds no hot pieces at all, but its
+lift key differs from a build with the list, so switching it translates the game again.
 Run on its own, `build.py` also lacks the rest of `make_game.py`'s environment (`RX_RELEASE`, `A64_HOT_CHUNK`), so its
 runtime objects differ from a `make_game.py` build's.
 
@@ -1093,9 +1126,11 @@ Builder's own command line: 24 jobs (the default), Compile shaders Most, no DLSS
 - **Run 2 is a player's first build:** it started with an empty NVIDIA shader cache. Run 1 started with a warm one,
   which saved about 20 s of the shader preparation.
 - **Memory:** about 14-15 GB above what was already in use, at its peak during the compile.
-- **No hot pieces.** A release ships no hot list and no game-side play profile (they are parked; when they come back
-  they are committed in `assets/profiles/`), so every lifted file is built at `-O1`. A checkout with
-  `work/hot_funcs.txt` also builds the eight hot pieces at `-O2`, which takes longer ([above](#a-faster-build-for-development)).
+- **No hot pieces in these runs.** This release shipped no hot list, so every lifted file was built at `-O1`. Since
+  the [hot list](#the-hot-list) is committed (`assets/profiles/hot_funcs.txt`), every build also compiles its eight hot
+  pieces at `-O2`: on a Ryzen 9 5900X (12 cores, Windows) the whole build took 25 s longer in an incremental pair
+  (6:17 -> 6:42; about 55 s from scratch, estimated), more on fewer cores; not measured again here. No game-side play
+  profile of the pieces is shipped.
 - **Slower PCs:** the compile and the shader preparation use every CPU thread, so a 6-core PC can take twice as long or
   more. That is an estimate, not a measurement.
 
