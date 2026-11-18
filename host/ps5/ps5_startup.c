@@ -31,6 +31,8 @@ void hos_ps5_startup(const char *title_name) {
    to 13 minutes (2026-11-12, docs/PS5.md); on this base they are a starting point, to be measured again.
      - HOS_MEMORY_MB: what the game is told it has (less than 9300 did not boot).
      - HOS_PS5_MEMINFO_RESERVE_MB: the game is told the console's free memory less this (host/hos_mem.c).
+     - HOS_PS5_PAGES_MB=2048: and its resource memory's pages are held under this; uncapped it kept 3.1-3.6 GB as a cache
+       and the renderer ran out at a scene change (host/hos_mem.c).
      - HOS_PS5_RENDER_MB, HOS_PS5_RESERVE_MB: the renderer's own limit, and what it leaves the game (gpu/vk/vk_vma.cpp).
      - RX_VK_PREPARE_ONCE=1: a start whose shader list (longshot_shaders.bin) is not prepared for this translator prepares
        all of it before the game, once (host/ps5/ps5_vk_prepare.inc).
@@ -44,17 +46,19 @@ void hos_ps5_startup(const char *title_name) {
        finished: a buffer across a chunk's end not imported whole, and the console's GPU waits on the fault rather than
        reporting it. At 64, 14 minutes there and no hang, 760 MB imported against 577 (2026-11-17).
      - RX_VK_COMPACT=0: the VRAM compaction off; GPU faults followed it on the console.
+     - RX_VK_CAP_PREWARM=0: no capture buffers of 32, 64 and 128 MB made ahead and held (224 MB the whole session, for a
+       load's 13-41 ms; gpu/vk/vk_memory.cpp).
      - RX_VK_FORCE_MESH_FALLBACK=1: the task and mesh stages as compute; the console's RADV hangs on the native ones. */
 static const char *const defaults[][2] = {
     {"HOS_HANDHELD", "1"}, {"RX_VK_TEX_MAX_DIM", "384"}, {"RX_VK_TEX_SKIP_MB", "16"}, {"RX_VK_ASTC_BC_ALL", "1"},
     {"RX_VK_ASTC_BC_MB", "0"}, {"RX_VK_FRAMEGEN_MULT", "2"}, {"RX_VK_PACE", "1"}, {"RX_VK_FSR_FG", "0"},
     {"RX_VK_NO_WARM", "1"}, {"RX_VK_DESC_POOL_DIV", "8"},
-    {"HOS_MEMORY_MB", "9300"}, {"HOS_PS5_MEMINFO_RESERVE_MB", "800"}, {"HOS_PS5_RENDER_MB", "1500"},
+    {"HOS_MEMORY_MB", "9300"}, {"HOS_PS5_MEMINFO_RESERVE_MB", "800"}, {"HOS_PS5_PAGES_MB", "2048"}, {"HOS_PS5_RENDER_MB", "1500"},
     {"HOS_PS5_RESERVE_MB", "3072"}, {"RX_VK_WB_DIFF", "0"},
     {"RX_VK_PREPARE_ONCE", "1"}, {"RX_VK_LOAD", "create"}, {"RX_VK_PRECOMPILE", "1"},
     {"RX_VK_LOAD_WORKERS", "4"}, {"RX_VK_LOAD_WORKERS_LOADING", "6"},
     {"RX_VK_IMPORT_CHUNK_MB", "1"}, {"RX_VK_IMPORT_SPAN_MB", "64"}, {"RX_VK_COMPACT", "0"},
-    {"RX_VK_WORKERS", "1"}, {"RX_VK_FORCE_MESH_FALLBACK", "1"},
+    {"RX_VK_WORKERS", "1"}, {"RX_VK_FORCE_MESH_FALLBACK", "1"}, {"RX_VK_CAP_PREWARM", "0"},
     /* (the renderer's image blocks at 16 MB, not 128: a block goes back to the console's pool only once empty, and the
        pool is shared with the game's pages and the heap. Below HOS_PS5_TEX_RESERVE_MB free, an image of 1 MB and up
        gets memory of its own: gpu/vk/vk_vma.cpp) */

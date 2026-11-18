@@ -465,12 +465,30 @@ static uint64_t reported_used(void) {
     uint64_t free_now = room > keep ? room - keep : 0;
     const uint64_t most = hos_total_memory > base ? hos_total_memory - base : 0;
     if (free_now > most) free_now = most;
+    /* (HOS_PS5_PAGES_MB=<n>: and never more than its mapped pages' room under n MB. The resource memory keeps what it maps
+       as a cache and takes all it is told: 3.1-3.6 GB of pages beside a heap of 6384 MB in 10-25 minutes, three runs of
+       2026-11-17, never given back, while the renderer's buffers grew 300-650 MB at a scene change and found 2 MiB free
+       (docked, klog_nuevo_17: the title stopped). Told 0 MB free it kept playing for minutes, its pages reused. 0: off) */
+    static int64_t pages_cap = -2;
+    if (pages_cap == -2) {
+        const char *e = getenv("HOS_PS5_PAGES_MB");
+        pages_cap = e ? (int64_t)atoll(e) : 0;
+    }
+    uint64_t mapped = 0;
+    if (pages_cap > 0) {
+        LOCK();
+        mapped = mapped_bytes;
+        UNLOCK();
+        const uint64_t cap = (uint64_t)pages_cap << 20, left = cap > mapped ? cap - mapped : 0;
+        if (free_now > left) free_now = left;
+    }
     static int64_t told_at;
     const int64_t now = hos_now_ns();
     if (now - told_at > 2000000000ll) {
         told_at = now;
-        hos_log("meminfo: the game is told %llu MB free (the console has %llu MB, reserve %lld MB)", (unsigned long long)(free_now >> 20),
-                (unsigned long long)(room >> 20), (long long)reserve);
+        hos_log("meminfo: the game is told %llu MB free (the console has %llu MB, reserve %lld MB; pages %llu MB of %lld)",
+                (unsigned long long)(free_now >> 20), (unsigned long long)(room >> 20), (long long)reserve,
+                (unsigned long long)(mapped >> 20), (long long)pages_cap);
     }
     return hos_total_memory - free_now;
 }
