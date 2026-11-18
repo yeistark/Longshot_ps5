@@ -88,6 +88,7 @@
 #ifdef __PROSPERO__
 #include "../../host/ps5/ps5_code_idle.h"   // (the console: the lowered code of programs not drawn for a while let go)
 extern "C" void ps5_heap_arenas(unsigned count) __attribute__((weak));   // (the SDK's heap: arenas new threads spread over)
+extern "C" uint64_t hos_ps5_direct_room(void);   // (host/ps5/win32_ps5.c: the console's free direct memory)
 #endif
 #include "vk_work.h"   // (after the others: counts the commands that do GPU work, for full_barrier)
 
@@ -2790,9 +2791,22 @@ VkPipeline build_graphics(const Program& p, const NvnState& s, const Targets& at
             logf("vk: graphics pipeline for %016llx recovered with optimization disabled", (unsigned long long)p.key);
     }
     if (gated && fault_quarantine().end(p.key, r == kDriverFault)) {
-        logf("vk: the driver faulted building a pipeline of %016llx: that program is not asked of it again (%s)",
-             (unsigned long long)p.key, driver_faults_path().c_str());
-        driver_fault_note(p.key);
+#ifdef __PROSPERO__
+        // (the console: a fault with its memory all but gone is the compiler's allocation failing, not the program. Seven
+        // programs went into the file that way at 4 MiB free ("no memory for a window buffer"), and every later run, whatever
+        // its memory, left them out: the Haunted Wasteland's sandstorm drawn as a flat green and yellow (2026-11-17). Left
+        // out for this run only)
+        const uint64_t room = hos_ps5_direct_room();
+        if (room < (256ull << 20)) {
+            logf("vk: the driver faulted building a pipeline of %016llx with %llu MiB of memory free: left out for this run, "
+                 "not noted", (unsigned long long)p.key, (unsigned long long)(room >> 20));
+        } else
+#endif
+        {
+            logf("vk: the driver faulted building a pipeline of %016llx: that program is not asked of it again (%s)",
+                 (unsigned long long)p.key, driver_faults_path().c_str());
+            driver_fault_note(p.key);
+        }
     }
     if (cold && r == VK_PIPELINE_COMPILE_REQUIRED) return *cold = true, VK_NULL_HANDLE;
     if (part >= 0) {
