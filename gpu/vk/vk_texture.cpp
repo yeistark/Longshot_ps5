@@ -5283,14 +5283,19 @@ void texture_frame(uint64_t completed) {
     // at once, 7 finalized ones the GPU drew among them with no copy, and objects came back from it black but for Navi's light
     // (klog_nuevo_33, 2026-11-19); the ones that went before were 77 x 77 and 13 x 13 tables unused for minutes. A transient
     // target is drawn over by the next one in its storage and still goes. RX_VK_KEEP_FINALIZED_ONE_FRAME=1: as upstream
+    // (PS5) and up to 64 MB each, not 4: what the same menu took with no copy was the last scene frame's finalized targets, the
+    // 2200 x 2200 x 3 depth array of the shadows (28 MB) among them, and the objects came back lit by Navi alone, as if all in
+    // shadow: made again over its storage it started empty (N16, 2026-11-19). RX_VK_KEEP_FINALIZED_EACH_MB=<n>: that limit
 #ifdef __PROSPERO__
     static const bool one_frame_only = env_on("RX_VK_KEEP_FINALIZED_ONE_FRAME");
+    static const uint64_t keep_each = (uint64_t)(getenv("RX_VK_KEEP_FINALIZED_EACH_MB") ? std::max(0, atoi(getenv("RX_VK_KEEP_FINALIZED_EACH_MB"))) : 64) << 20;
 #else
     const bool one_frame_only = true;
+    const uint64_t keep_each = 4ull << 20;
 #endif
     const auto keep_finalized = [&](const Texture* tex) {
         if (!keep_finalized_max || !tex->gpu_written || !tex->released || !tex->first_written ||
-            (one_frame_only && tex->first_written != tex->last_written) || tex->bytes > (4ull << 20) || finalized_obsolete(*tex))
+            (one_frame_only && tex->first_written != tex->last_written) || tex->bytes > keep_each || finalized_obsolete(*tex))
             return false;
         const auto g = gpu_owned.find(tex->gpu);   // (its storage's range still the one the GPU drew it in)
         if (g == gpu_owned.end() || g->second.first != tex->gpu + std::max<uint64_t>(tex->guest_size, 1)) return false;
@@ -5475,10 +5480,11 @@ void texture_frame(uint64_t completed) {
             if (lost && (lost_logged++ < 100 || lost_logged % 25 == 0))
                 // (always over the budget: a sweep lets only drawn-over textures go, and those lose nothing)
                 logf("vk: texture #%u %#llx %ux%ux%u x%u NVN %#x the GPU drew goes with no copy of its texels (%s, unused for %llu "
-                     "frames, over the budget, drawn in frames %llu-%llu, %llu KB): made again over this storage, it starts empty",
+                     "frames, over the budget, drawn in frames %llu-%llu, %llu KB%s): made again over this storage, it starts empty",
                      tex->id, (unsigned long long)tex->gpu, tex->width, tex->height, tex->depth, tex->layers, tex->nvn_format,
                      tex->released ? "finalized" : "live", (unsigned long long)(frame_no - tex->last_frame),
-                     (unsigned long long)tex->first_written, (unsigned long long)tex->last_written, (unsigned long long)(tex->bytes >> 10));
+                     (unsigned long long)tex->first_written, (unsigned long long)tex->last_written, (unsigned long long)(tex->bytes >> 10),
+                     !tex->released ? "" : keep_finalized(tex) ? ", keepable: over the cap" : ", not keepable");
         }
         watch_tex(tex, "evicted");
         if (!tex->gpu_written && tex->uploaded && !remade_skip_old()) {   // (above: made again, it is uploaded from memory)
