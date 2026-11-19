@@ -212,6 +212,10 @@ def main():
         if not os.path.exists(need):
             sys.exit("ps5/build.py: missing %s: %s" % (what, need))
     os.makedirs(os.path.join(OUT, "obj"), exist_ok=True)
+    # (a lift with a hot list leaves its hot functions in one code_hot.c, 96 MB: one -O2 compile of it took 79 minutes on a fast
+    # core upstream. nx2/split_hot.py cuts it into 8 pieces that compile side by side, as nx2/build.py's route does)
+    if os.path.exists(os.path.join(GEN, "code_hot.c")):
+        subprocess.run([sys.executable, "-I", os.path.join(ROOT, "nx2", "split_hot.py"), GEN, "8"], check=True)
     rt64 = rtgen.write(os.path.join(OUT, "rt64"))
     gen_dir = os.path.join(OUT, "gen")
     logo_rgba.write(os.path.join(gen_dir, "longshot_logo.h"))
