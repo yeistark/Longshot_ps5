@@ -2541,6 +2541,48 @@ PipeEntry* graphics_pipeline(const Program& p, const NvnState& s, const Targets&
 /// part: -1 the whole pipeline, or the graphics pipeline library it stands for: 0 vertex input, 1 pre-rasterization, 2 fragment
 /// shader, 3 fragment output
 /// cold: made only if the driver has it compiled already; set, and nothing made, when it would have had to compile
+#ifdef __PROSPERO__
+/// (PS5) The six programs the console's driver faults on in every run (the same keys since klog_nuevo_25): what each pipeline is,
+/// once a program, and its stages' SPIR-V written beside the cache as fault_<key>_<n>_<stage>.spv, to be read off the console and
+/// looked at. Objects drawn black but for Navi's light, the same ones every run (the horse, the Gerudo Fortress's banners), may be
+/// these draws left out. RX_VK_FAULT_DUMP=0: the line alone
+static void ps5_fault_report(const Program& p, const VkGraphicsPipelineCreateInfo& ci, const Targets& at, VkPrimitiveTopology topo) {
+    static std::mutex mu;
+    static std::unordered_set<uint64_t> seen;
+    {
+        std::lock_guard lk(mu);
+        if (!seen.insert(p.key).second) return;
+    }
+    char line[768];
+    int n = snprintf(line, sizeof line, "vk: faulted pipeline %016llx: %u stages (", (unsigned long long)p.key, ci.stageCount);
+    for (uint32_t i = 0; i < ci.stageCount && n < 600; i++) n += snprintf(line + n, sizeof line - n, "%s%#x", i ? " " : "", (unsigned)ci.pStages[i].stage);
+    n += snprintf(line + n, sizeof line - n, "), %d colour targets, depth %s, topology %d, %u vertex attributes, %u blend attachments%s%s",
+                  at.n, ci.pDepthStencilState && ci.pDepthStencilState->depthTestEnable ? "tested" : "untested", (int)topo,
+                  ci.pVertexInputState ? ci.pVertexInputState->vertexAttributeDescriptionCount : 0,
+                  ci.pColorBlendState ? ci.pColorBlendState->attachmentCount : 0, p.fallback ? ", mesh fallback" : "",
+                  p.mesh ? ", mesh" : "");
+    logf("%s", line);
+    static const bool dump = !getenv("RX_VK_FAULT_DUMP") || atoi(getenv("RX_VK_FAULT_DUMP")) != 0;
+    if (!dump) return;
+    std::string dir = driver_faults_path();
+    if (const size_t slash = dir.find_last_of('/'); slash != std::string::npos) dir.resize(slash);
+    for (size_t i = 0; i < p.stages.size(); i++) {
+        std::vector<uint32_t> spirv;
+        const unsigned stage = (unsigned)p.stages[i].vk_stage;
+        if (!program_cache_stage_spirv(p, i, spirv)) {
+            logf("vk:   stage %zu (%#x) of %016llx: its SPIR-V is not in the program cache", i, stage, (unsigned long long)p.key);
+            continue;
+        }
+        char path[512];
+        snprintf(path, sizeof path, "%s/fault_%016llx_%zu_%x.spv", dir.c_str(), (unsigned long long)p.key, i, stage);
+        FILE* f = fopen(path, "wb");
+        const bool ok = f && fwrite(spirv.data(), 4, spirv.size(), f) == spirv.size();
+        if (f) fclose(f);
+        logf("vk:   stage %zu (%#x) of %016llx: %zu words of SPIR-V %s %s", i, stage, (unsigned long long)p.key, spirv.size(),
+             ok ? "written to" : "NOT written to", path);
+    }
+}
+#endif
 VkPipeline build_graphics(const Program& p, const NvnState& s, const Targets& at, VkPrimitiveTopology topo, int part, bool* cold) {
     if (at.n < 0 || at.n > 8 || program_modules_dropped(p)) return VK_NULL_HANDLE;   // (longshot: at most 8 colour targets)
     const Shader::Info& vs = *vertex_info(p);
@@ -2813,6 +2855,7 @@ VkPipeline build_graphics(const Program& p, const NvnState& s, const Targets& at
         if (true) {
             logf("vk: the driver faulted building a pipeline of %016llx with %llu MiB of memory free: left out for this run, "
                  "not noted", (unsigned long long)p.key, (unsigned long long)(room >> 20));
+            ps5_fault_report(p, ci, at, topo);
         } else
 #endif
         {

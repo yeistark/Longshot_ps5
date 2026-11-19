@@ -156,6 +156,8 @@ bool program_cache_complete_ask(Program& p, bool* busy);
 /// (longshot) The graphics stages of a program whose modules were let go after the precompile (program_cache_drop_modules):
 /// remade from longshot_programs.bin before play builds a new pipeline variant for it
 bool program_cache_complete_graphics(const Program& p);
+/// (PS5) a stage's SPIR-V as the program cache holds it (vk_progcache.cpp; for the pipelines the driver faults on, vk_draw.cpp)
+bool program_cache_stage_spirv(const Program& prog, size_t i, std::vector<uint32_t>& out);
 /// (longshot) Lets go of the VkShaderModules of ready programs whose pipelines are built and whose stages can be remade from
 /// longshot_programs.bin (or are compute stages that need no another pipeline); returns how many modules were destroyed
 size_t program_cache_drop_modules();

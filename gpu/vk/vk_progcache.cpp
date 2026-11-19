@@ -1150,3 +1150,20 @@ unsigned prepare_cpus() {
 }
 
 } // namespace mkwvk
+
+namespace mkwvk {
+/// (PS5) A stage's SPIR-V as longshot_programs.bin holds it (code_at, code_words), into out: for the programs the console's driver
+/// faults on, written out beside the cache to be read off the console (vk_draw.cpp build_graphics). False when the stage's code is
+/// not in the file (translated in this run, kept compressed) or does not read
+bool program_cache_stage_spirv(const Program& prog, size_t i, std::vector<uint32_t>& out) {
+    if (i >= prog.stages.size() || disk_path.empty()) return false;
+    const Stage& st = prog.stages[i];
+    if (!st.code_words || st.code_at <= 0) return false;
+    FILE* in = fopen(disk_path.c_str(), "rb");
+    if (!in) return false;
+    out.assign((size_t)st.code_words, 0);
+    const bool ok = _fseeki64(in, st.code_at, SEEK_SET) == 0 && fread(out.data(), 4, out.size(), in) == out.size();
+    fclose(in);
+    return ok && !out.empty() && out[0] == 0x07230203u;   // (SPIR-V's magic word: a stale place is not code)
+}
+}  // namespace mkwvk
