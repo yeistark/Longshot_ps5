@@ -87,7 +87,12 @@ def jobs_for(rt64, gen_dir):
     game = [os.path.join(GEN, c) for c in chunks] + \
         [os.path.join(GEN, f) for f in ("a64_table.c", "a64_hooks.c", "a64_suyu.c", "a64_stubs.c", "hos_image.c", "nvn2_exports.c")] + \
         [os.path.join(rt64, "a64_rt.c")]
-    out += [(s, os.path.join(OUT, "obj", "game_" + os.path.basename(s)[:-2] + ".o"), game_fl, game_digest) for s in game]
+    # (the hot pieces, code_hot*.c: the lift's hot functions together, A64_HOT_FUNCS + A64_HOT_CHUNK=1, from upstream's committed
+    # assets/profiles/hot_funcs.txt (#1635), at -O2 as nx2/build.py's hot_flags gives them: the hot callees inline into their hot
+    # callers. Upstream measured +24 % fps on Death Mountain Trail and +10 % in Kakariko where the game's own code sets the frame)
+    hot_fl = [("-" + os.environ.get("RX_HOT_OPT", "O2")) if f == "-O1" else f for f in game_fl]
+    out += [(s, os.path.join(OUT, "obj", "game_" + os.path.basename(s)[:-2] + ".o"),
+             hot_fl if os.path.basename(s).startswith("code_hot") else game_fl, game_digest) for s in game]
 
     # the runtime: host/ as Linux builds it, without SDL's loader (host/ps5/hos_sdl_ps5.c) and the Linux-only files
     host_digest = tree_digest(HOST, rt64, GEN) + tree_digest(os.path.join(VK), ext=("vk_api.h", "dlss_math.h"))

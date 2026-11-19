@@ -71,7 +71,7 @@ int hos_oot_barrier_on(void) {
                     "instead of sleeping 20 us (HOS_OOT_BARRIER_WAIT)");
         m = __atomic_load_n(&barrier_mode, __ATOMIC_ACQUIRE);
     }
-    return barrier_bound ? hos_ab_value("HOS_OOT_BARRIER_WAIT", m) : 0;
+    return barrier_bound ? m : 0;   /* (no in-run A/B here: upstream's hos_ab.c, #1663, is not on this branch) */
 }
 
 static void barrier_count(int how, int64_t waited) {
