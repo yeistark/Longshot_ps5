@@ -7778,10 +7778,12 @@ void draw(VkCommandBuffer cmd, NvnState& s, const DrawArgs& d) {
             }
             return v;
         }();
-        for (const auto& [value, mask] : skip_keys)
-            if ((cp->key & mask) == value) {
-                static std::atomic<int> told{0};
-                if (told++ < 8) logf("vk: draws of program %016llx left out (RX_VK_SKIP_PROG); its code:%s", (unsigned long long)cp->key,
+        // (a count per listed prefix: one shared count let a program drawn 128 times at each area load, 53509044401d78d2, take
+        // every line, and the others' code was never logged)
+        static std::atomic<int> told[16];
+        for (size_t i = 0; i < skip_keys.size(); i++)
+            if (const auto& [value, mask] = skip_keys[i]; (cp->key & mask) == value) {
+                if (told[std::min<size_t>(i, 15)]++ < 2) logf("vk: draws of program %016llx left out (RX_VK_SKIP_PROG); its code:%s", (unsigned long long)cp->key,
                                      program_code_keys(s).c_str());
                 return;
             }
