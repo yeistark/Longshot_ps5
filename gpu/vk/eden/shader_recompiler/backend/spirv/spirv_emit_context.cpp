@@ -1066,12 +1066,23 @@ void EmitContext::DefineWriteStorageCasLoopFunction(const Info& info) {
 }
 
 // (longshot) The page table of guest memory for pointers no bound buffer holds: 4 KB pages from this base, a device address each
+#ifndef __PROSPERO__
 constexpr unsigned long long kGuestPagesBase = 0x1000000000ull;
 constexpr unsigned long long kGuestPagesBytes = 8ull << 30;
 // (a second window, its entries after the first's: the pools the game's GPU allocator puts at 0x7fxxxxxxxx, where its storage
 // buffers are. Pointers there read 0 with the first alone)
 constexpr unsigned long long kGuestPagesBase2 = 0x7f00000000ull;
 constexpr unsigned long long kGuestPagesBytes2 = 4ull << 30;
+#else
+// (PS5) The console's guest window is 64 GiB, not 512 (host/hos.h): the heap starts at 16 GiB (HOS_HEAP_BASE) and the address
+// regions come down from 64 GiB (HOS_GUEST_SPACE). With the PC's windows no page of the game's was ever in the table there,
+// and every followed pointer read 0: OoT's culling left one of its two list sets empty (the Sacred Meadow's tree crowns
+// every other frame) and four of its stages had no groups at all. The heap the game asks for is 6894 MB
+constexpr unsigned long long kGuestPagesBase = 0x400000000ull;
+constexpr unsigned long long kGuestPagesBytes = 8ull << 30;
+constexpr unsigned long long kGuestPagesBase2 = 0xf00000000ull;
+constexpr unsigned long long kGuestPagesBytes2 = 4ull << 30;
+#endif
 
 void EmitContext::DefineGlobalMemoryFunctions(const Info& info) {
     if (!info.uses_global_memory || !profile.support_int64) {

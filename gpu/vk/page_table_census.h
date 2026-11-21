@@ -19,7 +19,12 @@ namespace mkwvk {
 struct PageWindow {
     uint64_t base, bytes, first;   // (first: the window's first entry in the table, after the windows before it)
 };
+#ifndef __PROSPERO__
 inline constexpr PageWindow kPageWindows[] = {{0x1000000000ull, 8ull << 30, 0}, {0x7f00000000ull, 4ull << 30, (8ull << 30) >> 12}};
+#else
+// (PS5: the heap at 16 GiB and the regions below 64 GiB, host/hos.h; spirv_emit_context.cpp has the same under the same switch)
+inline constexpr PageWindow kPageWindows[] = {{0x400000000ull, 8ull << 30, 0}, {0xf00000000ull, 4ull << 30, (8ull << 30) >> 12}};
+#endif
 inline constexpr uint64_t kPageTableEntries = ((8ull << 30) + (4ull << 30)) >> 12;   // (4 KB pages: a device address each)
 
 /// The bytes of [lo, hi) that no window covers
