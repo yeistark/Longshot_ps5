@@ -8060,7 +8060,32 @@ void draw(VkCommandBuffer cmd, NvnState& s, const DrawArgs& d) {
     texture_watch_prog(p.key);
     if (!same_desc) gfx_sampled() = draw_sampled();
     static const bool barrier_every = env_on("RX_VK_BARRIER_EVERY_DRAW");   // (an experiment: a pass each)
-    if (barrier_every) end_pass(cmd);
+    // (ps5: a pass each stopped the GPU hang of OoT's castle escape (draws of a14724a9 behind 15a45545) but cost about a
+    // quarter of the fps; this caps the draws a pass holds instead, to find whether the length of the pass is what hangs)
+    static const int pass_max = getenv("RX_VK_PASS_MAX_DRAWS") ? std::max(0, atoi(getenv("RX_VK_PASS_MAX_DRAWS"))) : 0;
+    // (ps5: every GPU hang saved, OoT's castle escape and Spirit Temple alike, had in flight a draw whose fragment stage follows
+    // guest pointers (a14724a9, 5934c0f3, 15d86693): run beside the draws around it, it never finished; given a pass of its own,
+    // and so a full barrier before it and after it, it does. The vertex stages all follow pointers and are left as they are)
+    // (=2: a barrier before such a draw only; the draws after it share its pass)
+#ifdef __PROSPERO__
+    static const int isolate_fs_global = getenv("RX_VK_PASS_ISOLATE_FS_GLOBAL") ? atoi(getenv("RX_VK_PASS_ISOLATE_FS_GLOBAL")) : 1;
+#else
+    static const int isolate_fs_global = getenv("RX_VK_PASS_ISOLATE_FS_GLOBAL") ? atoi(getenv("RX_VK_PASS_ISOLATE_FS_GLOBAL")) : 0;
+#endif
+    static thread_local bool isolate_next = false;   // (the draw before had a pass of its own: this one starts another)
+    bool fs_global = false;
+    if (isolate_fs_global)
+        for (const Stage& st : p.stages)
+            if (st.vk_stage == VK_SHADER_STAGE_FRAGMENT_BIT && st.info.uses_global_memory) fs_global = true;
+    if (fs_global) {
+        static std::atomic<uint64_t> isolated{0};
+        const uint64_t k = isolated.fetch_add(1, std::memory_order_relaxed);
+        if (k < 4 || (k & (k - 1)) == 0)
+            logf("vk: a draw of %016llx follows pointers in its fragment stage: a pass of its own (%llu so far)",
+                 (unsigned long long)p.key, (unsigned long long)k + 1);
+    }
+    if (barrier_every || (pass_max && pass().open && pass().draws >= pass_max) || fs_global || isolate_next) end_pass(cmd);
+    isolate_next = fs_global && isolate_fs_global != 2;
     reactive_scene_draw(cmd, p, s, at);
     uint16_t writes;
     {

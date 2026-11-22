@@ -369,6 +369,8 @@ SW(RX_VK_PACE, player, bool, "the Frame pacing row", "Turns frame pacing on or o
 SW(RX_VK_PARALLEL, attempt, int, "0: off, the replay records on one thread", "Number of threads (2-8) that record a command buffer's segments in parallel; 0 or 1 is off.")
 SW(RX_VK_PARALLEL_SEG, tune, int, "160 draws and dispatches (minimum 32)", "Size of the segments a parallel replay splits a submission into.")
 SW(RX_VK_PASS_BARRIER, attempt, enum, "every draw pass starts with a full barrier", "=game makes a draw pass right after another, with no game barrier between, wait in its fragment stages only.")
+SW(RX_VK_PASS_ISOLATE_FS_GLOBAL, kill, int, "1 on the PS5, 0 elsewhere: a draw whose fragment stage follows guest pointers gets a pass of its own", "0 lets those draws share their pass, as before (on the PS5 the GPU hung in some); 2 puts a barrier before them only.")
+SW(RX_VK_PASS_MAX_DRAWS, attempt, int, "0: a pass holds as many draws as its targets allow", "Ends the pass once it holds this many draws, so the next draw starts a pass of its own.")
 SW(RX_VK_PASS_TIMING, diag, int, "off: no GPU timestamps", "Times each pass on the GPU with timestamps and logs it every 600 presents; the value is the detail level.")
 SW(RX_VK_PASS_TRACE, diag, bool, "off", "Records the passes and dispatches of the last frames and logs them around a flash or dark frame.")
 SW(RX_VK_PASS_TRACE_AT, diag, int, "0: off", "<n> logs the passes of the frame at every nth present.")
